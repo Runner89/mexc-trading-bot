@@ -4,13 +4,17 @@ import hmac
 import hashlib
 import json
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
+
+
 
 app = Flask(__name__)
 
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 BASE_URL = "https://api.mexc.com"
+
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
 def sign_request(params, secret):
     query_string = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
@@ -49,6 +53,10 @@ def get_market_price(symbol):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    secret = request.headers.get("X-Webhook-Secret")
+    if secret != WEBHOOK_SECRET:
+        abort(403)  # Zugriff verweigert
+
     data = request.json
     symbol = data.get("symbol")
     side = data.get("side")
@@ -59,6 +67,5 @@ def webhook():
 
     result = place_market_order(symbol, side, usdt_amount)
     return jsonify(result)
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
