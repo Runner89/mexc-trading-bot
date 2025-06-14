@@ -21,7 +21,7 @@ def place_market_order(symbol, side, usdt_amount):
     price = get_market_price(symbol)
     if not price:
         return {"error": "Preis konnte nicht ermittelt werden."}
-    
+
     quantity = round(usdt_amount / price, 4)
 
     params = {
@@ -31,13 +31,18 @@ def place_market_order(symbol, side, usdt_amount):
         "quantity": quantity,
         "timestamp": int(time.time() * 1000),
     }
-    params["signature"] = sign_request(params, API_SECRET)
+
+    # Signatur ohne sie selbst berechnen
+    query_string = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+    signature = hmac.new(API_SECRET.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+
+    # Danach Signatur anhängen
+    params["signature"] = signature
 
     headers = {"X-MEXC-APIKEY": API_KEY}
     response = requests.post(f"{BASE_URL}/api/v3/order", params=params, headers=headers)
 
     return response.json()
-
 def get_market_price(symbol):
     try:
         url = f"{BASE_URL}/api/v3/ticker/price?symbol={symbol}"
