@@ -1,44 +1,34 @@
-import os
-from flask import Flask, request, jsonify
-import time, hmac, hashlib, requests
-
-app = Flask(__name__)
-
-def get_step_size(symbol):
-    url = "https://api.mexc.com/api/v3/exchangeInfo"
-    try:
-        res = requests.get(url)
-        data = res.json()
-        for s in data.get("symbols", []):
-            if s["symbol"] == symbol:
-                for ftr in s.get("filters", []):
-                    if ftr.get("filterType") == "LOT_SIZE":
-                        return float(ftr.get("stepSize", 1))
-        return None
-    except Exception as e:
-        return None
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     symbol = data.get("symbol")
-    action = data.get("action")
-    quantity = data.get("quantity")
 
     if not symbol:
         return jsonify({"error": "Kein Symbol angegeben"}), 400
 
-    step_size = get_step_size(symbol)
-    if step_size is None:
-        return jsonify({"error": "Step size nicht gefunden oder ungültiges Symbol"}), 400
+    url = "https://api.mexc.com/api/v3/exchangeInfo"
+    try:
+        res = requests.get(url)
+        data_api = res.json()
+    except Exception as e:
+        return jsonify({"error": f"Fehler bei API-Anfrage: {str(e)}"}), 500
 
-    # Zum Testen: einfach die Step Size zurückgeben
-    return jsonify({"symbol": symbol, "step_size": step_size}), 200
+    # Alle Symbole ausgeben (zum Debuggen, kannst du später entfernen)
+    symbol_list = [s["symbol"] for s in data_api.get("symbols", [])]
 
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ MEXC Python Bot läuft"
+    # Versuche, das Symbol im API-Response zu finden
+    symbol_info = next((s for s in data_api.get("symbols", []) if s["symbol"] == symbol), None)
+    if not symbol_info:
+        return jsonify({
+            "error": "Symbol nicht gefunden",
+            "gesuchte_symbol": symbol,
+            "verfügbare_symbole_beispiel": symbol_list[:10]  # zeige 10 Symbole als Beispiel
+        }), 400
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Zeige Filters des Symbols zum Debuggen
+    filters = symbol_info.get("filters", [])
+
+    return jsonify({
+        "symbol": symbol,
+        "filters": filters
+    }), 200
