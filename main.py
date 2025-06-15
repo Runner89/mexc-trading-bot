@@ -1,38 +1,83 @@
 import os
 from flask import Flask, request
 import time, hmac, hashlib, requests
-from flask_cors import CORS
+import math
 
 app = Flask(__name__)
-CORS(app)
+
+def get_exchange_info():
+    """Hole die Handelsspezifikationen für Symbole (inkl. Step Size)."""
+    url = "https://api.mexc.com/api/v3/exchangeInfo"
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print("Error getting exchange info:", e)
+        return None
+
+def get_symbol_info(symbol, exchange_info):
+    """Finde Infos für ein Symbol."""
+    for s in exchange_info.get("symbols", []):
+        if s["symbol"] == symbol:
+            return s
+    return None
+
+def get_current_price(symbol):
+    """Hole aktuellen Preis von MEXC."""
+    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        data = r.json()
+        return float(data["price"])
+    except Exception as e:
+        print("Error getting price:", e)
+        return None
+
+def adjust_quantity(quantity, step_size):
+    """Runde quantity auf das Vielfache von step_size ab."""
+    precision = int(round(-math.log10(step_size)))
+    adjusted_qty = math.floor(quantity / step_size) * step_size
+    return f"{adjusted_qty:.{precision}f}"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     symbol = data.get("symbol")
-    action = data.get("action") or data.get("side")
-    usdt_amount = data.get("usdt_amount")
+    action = data.get("action")  # z.B. "BUY" oder "SELL"
     quantity = data.get("quantity")
+    usdt_amount = data.get("usdt_amount")
 
-    if not all([symbol, action]):
-        return "Missing symbol or action", 400
+    if not symbol or not action or (not quantity and not usdt_amount):
+        return "Missing data: symbol, action and quantity or usdt_amount required", 400
 
-    # Wenn usdt_amount angegeben ist, berechne quantity anhand aktuellem Preis
-    if usdt_amount is not None:
-        price_url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
-        try:
-            price_response = requests.get(price_url)
-            price_response.raise_for_status()
-            price = float(price_response.json().get("price", 0))
-            if price <= 0:
-                return "Invalid price from MEXC", 500
-            quantity = float(usdt_amount) / price
-            # Optional: Runde quantity auf 4 Dezimalstellen (anpassen je nach Symbol)
-            quantity = round(quantity, 4)
-        except Exception as e:
-            return f"Error getting price: {str(e)}", 500
-    elif quantity is None:
-        return "Missing quantity or usdt_amount", 400
+    exchange_info = get_exchange_info()
+    if not exchange_info:
+        return "Error fetching exchange info", 500
+
+    symbol_info = get_symbol_info(symbol, exchange_info)
+    if not symbol_info:
+        return f"Symbol {symbol} not found", 400
+
+    # Finde stepSize in den Filters
+    step_size = None
+    for f in symbol_info["filters"]:
+        if f["filterType"] == "LOT_SIZE":
+            step_size = float(f["stepSize"])
+            break
+
+    if not step_size:
+        return "Step size not found for symbol", 500
+
+    if usdt_amount:
+        price = get_current_price(symbol)
+        if not price:
+            return "Could not get current price", 500
+        qty_float = float(usdt_amount) / price
+        quantity = adjust_quantity(qty_float, step_size)
+    else:
+        quantity = adjust_quantity(float(quantity), step_size)
 
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
