@@ -3,12 +3,54 @@ import time
 import hmac
 import hashlib
 import requests
+import threading
 from flask import Flask, request, jsonify
 from datetime import datetime
 
 app = Flask(__name__)
 
 BASE_URL = "https://api.mexc.com"
+FIREBASE_URL = "https://test-ecb1c-default-rtdb.europe-west1.firebasedatabase.app"
+
+# --------- Firebase-Funktionen ---------
+def firebase_loesche_kaufpreise(asset):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    response = requests.delete(url)
+    if response.status_code == 200:
+        print(f"Firebase: Kaufpreise für {asset} gelöscht")
+    else:
+        print(f"Firebase: Fehler beim Löschen der Kaufpreise für {asset}: {response.text}")
+
+def firebase_speichere_kaufpreis(asset, price, quantity):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    data = {"price": price, "quantity": quantity}
+    response = requests.post(url, json=data)
+    if response.status_code == 200:
+        print(f"Firebase: Kaufpreis gespeichert: Asset={asset}, Price={price}, Quantity={quantity}")
+    else:
+        print(f"Firebase: Fehler beim Speichern: {response.text}")
+
+def firebase_get_kaufpreise(asset):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    response = requests.get(url)
+    if response.status_code == 200 and response.json():
+        data = response.json()
+        kaufpreise_mengen = [(float(v["price"]), float(v["quantity"])) for v in data.values()]
+        print(f"Firebase: Lade Kaufpreise für {asset}: {kaufpreise_mengen}")
+        return kaufpreise_mengen
+    else:
+        print(f"Firebase: Keine Kaufpreise für {asset} gefunden oder Fehler")
+        return []
+
+# --------- Hilfsfunktionen ---------
+def berechne_durchschnittspreis(kaufpreise_mengen):
+    if not kaufpreise_mengen:
+        return 0
+    gesamtmenge = sum(qty for _, qty in kaufpreise_mengen)
+    if gesamtmenge == 0:
+        return 0
+    gewichteter_preis = sum(price * qty for price, qty in kaufpreise_mengen)
+    return gewichteter_preis / gesamtmenge
 
 def get_exchange_info():
     url = f"{BASE_URL}/api/v3/exchangeInfo"
@@ -40,67 +82,53 @@ def get_step_size(filters, baseSizePrecision):
         return 1
 
 def get_balance(asset):
-    timestamp = int(time.time() * 1000)
-    params = f"timestamp={timestamp}"
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    signature = hmac.new(secret.encode(), params.encode(), hashlib.sha256).hexdigest()
-    url = f"{BASE_URL}/api/v3/account?{params}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
-    res = requests.get(url, headers=headers)
-    data = res.json()
+    # Für Testzwecke hier immer 0 zurückgeben (oder beliebigen Wert)
+    # Du kannst hier auch echte MEXC-API-Anbindung machen, wenn gewünscht
+    print(f"Balance-Abfrage für {asset} simuliert: 1.2345")
+    return 1.2345  # Simulierte Menge
 
-    for item in data.get("balances", []):
-        if item["asset"] == asset:
-            return float(item.get("free", 0))
-    return 0
-
+# --------- Simulierte Orderfunktion (kein Echtauftrag!) ---------
 def place_order(symbol, side, order_type, quantity=None, price=None):
-    timestamp = int(time.time() * 1000)
-    params = {
+    print(f"Order simuliert: {side} {quantity} {symbol} @ {price if price else 'MARKET'}")
+    fake_response = {
+        "orderId": 123456,
         "symbol": symbol,
         "side": side,
         "type": order_type,
-        "timestamp": timestamp,
+        "price": str(price) if price else "",
+        "origQty": str(quantity),
+        "status": "FILLED",
+        "fills": [{"price": str(price if price else 1), "qty": str(quantity)}],
+        "transactTime": int(time.time() * 1000)
     }
-    if quantity is not None:
-        params["quantity"] = quantity
-    if price is not None:
-        params["price"] = price
-        params["timeInForce"] = "GTC"  # Good-Till-Canceled für Limit-Order
-
-    query = "&".join([f"{k}={v}" for k,v in sorted(params.items())])
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"{BASE_URL}/api/v3/order?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
-    response = requests.post(url, headers=headers)
-    return response.json(), response.status_code
+    return fake_response, 200
 
 def cancel_open_limit_sell(symbol):
-    # Hole offene Orders des Symbols und lösche Limit-Sell-Orders
-    timestamp = int(time.time() * 1000)
-    params = f"symbol={symbol}&timestamp={timestamp}"
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    signature = hmac.new(secret.encode(), params.encode(), hashlib.sha256).hexdigest()
-    url = f"{BASE_URL}/api/v3/openOrders?{params}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
-    res = requests.get(url, headers=headers)
-    data = res.json()
+    print(f"Simuliere Abbruch offener Limit-Sell Orders für {symbol}")
+    return []
 
-    # Falls Fehler
-    if not isinstance(data, list):
-        return data
+# --------- Hintergrundprozess für Firebase und Limit-Sell ---------
+def hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size):
+    kaufpreise_mengen = firebase_get_kaufpreise(base_asset)
+    durchschnittspreis = berechne_durchschnittspreis(kaufpreise_mengen)
+    if durchschnittspreis == 0:
+        print("Kein Durchschnittspreis verfügbar, Limit-Sell übersprungen")
+        return
 
-    cancel_results = []
-    for order in data:
-        if order["side"] == "SELL" and order["type"] == "LIMIT":
-            order_id = order["orderId"]
-            cancel_params = f"symbol={symbol}&orderId={order_id}&timestamp={int(time.time() * 1000)}"
-            cancel_signature = hmac.new(secret.encode(), cancel_params.encode(), hashlib.sha256).hexdigest()
-            cancel_url = f"{BASE_URL}/api/v3/order?{cancel_params}&signature={cancel_signature}"
-            cancel_resp = requests.delete(cancel_url, headers=headers)
-            cancel_results.append(cancel_resp.json())
-    return cancel_results
+    limit_sell_price = round(durchschnittspreis * (1 + limit_sell_percent / 100), 8)
+
+    print(f"Setze Limit-Sell-Order bei {limit_sell_price} für {symbol}")
+
+    cancel_open_limit_sell(symbol)
+
+    gesamtmenge = get_balance(base_asset)
+    gesamtmenge = gesamtmenge - (gesamtmenge % step_size)
+    gesamtmenge = round(gesamtmenge, 8)
+    if gesamtmenge <= 0:
+        print("Keine Menge zum Verkaufen, Limit-Sell übersprungen")
+        return
+
+    place_order(symbol, "SELL", "LIMIT", quantity=gesamtmenge, price=limit_sell_price)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -110,6 +138,7 @@ def webhook():
     symbol = data.get("symbol")
     action = data.get("side", "BUY").upper()
     usdt_amount = data.get("usdt_amount")
+    limit_sell_percent = data.get("limit_sell_percent", 1)  # Standard 1%
 
     if not symbol:
         return jsonify({"error": "symbol fehlt"}), 400
@@ -132,65 +161,56 @@ def webhook():
     if action == "BUY":
         if not usdt_amount:
             return jsonify({"error": "usdt_amount fehlt für BUY"}), 400
+
+        # Wenn keine offene Position, alte Kaufpreise löschen
+        if get_balance(base_asset) == 0:
+            firebase_loesche_kaufpreise(base_asset)
+
         quantity = usdt_amount / price
         quantity = quantity - (quantity % step_size)
         quantity = round(quantity, 8)
         if quantity <= 0:
             return jsonify({"error": "Berechnete Menge ist 0 oder ungültig"}), 400
 
-        # Market Buy ausführen
         buy_order, status = place_order(symbol, "BUY", "MARKET", quantity=quantity)
         if status != 200:
             return jsonify({"error": "Buy-Order fehlgeschlagen", "details": buy_order}), status
 
-        # Durchschnittspreis aus der Buy Order nehmen (falls nicht verfügbar, fallback auf aktuellen Preis)
-        avg_price = float(buy_order.get("price", price))
+        fills = buy_order.get("fills", [])
+        if fills:
+            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
+            filled_qty = sum(float(f["qty"]) for f in fills)
+        else:
+            avg_price = price
+            filled_qty = quantity
 
-        # Limit Sell Preis = 1% über avg_price
-        limit_sell_price = round(avg_price * 1.01, 8)
+        # Speicher- und Limit-Sell-Task im Hintergrund
+        def speicher_und_sell():
+            firebase_speichere_kaufpreis(base_asset, avg_price, filled_qty)
+            hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size)
 
-        # Vorherige Limit-Sell Orders löschen
-        cancel_results = cancel_open_limit_sell(symbol)
-
-        # Neue Limit-Sell-Order setzen mit gesamter Menge aus dem Buy
-        limit_sell_order, sell_status = place_order(symbol, "SELL", "LIMIT", quantity=quantity, price=limit_sell_price)
-        if sell_status != 200:
-            return jsonify({"error": "Limit-Sell-Order fehlgeschlagen", "details": limit_sell_order}), sell_status
+        threading.Thread(target=speicher_und_sell).start()
 
         response_time = (time.time() - start_time) * 1000
         buy_order["responseTime"] = f"{response_time:.2f} ms"
-        buy_order["limitSellOrder"] = limit_sell_order
-        buy_order["limitSellCancelResults"] = cancel_results
         buy_order["transactTimeReadable"] = datetime.fromtimestamp(buy_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
 
         return jsonify(buy_order), 200
 
     elif action == "SELL":
-        # Market Sell: Ganze Position verkaufen
-        quantity = get_balance(base_asset)
-        quantity = quantity - (quantity % step_size)
-        quantity = round(quantity, 8)
-
-        if quantity <= 0:
-            return jsonify({"error": f"Keine {base_asset}-Menge zum Verkaufen"}), 400
+        quantity = data.get("quantity")
+        if not quantity:
+            return jsonify({"error": "quantity fehlt für SELL"}), 400
+        quantity = float(quantity)
 
         sell_order, status = place_order(symbol, "SELL", "MARKET", quantity=quantity)
         if status != 200:
             return jsonify({"error": "Sell-Order fehlgeschlagen", "details": sell_order}), status
 
-        response_time = (time.time() - start_time) * 1000
-        sell_order["responseTime"] = f"{response_time:.2f} ms"
-        sell_order["transactTimeReadable"] = datetime.fromtimestamp(sell_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-
         return jsonify(sell_order), 200
 
     else:
-        return jsonify({"error": "Ungültige Aktion. Nur BUY oder SELL erlaubt."}), 400
-
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ MEXC Webhook läuft!"
+        return jsonify({"error": "Unbekannte Aktion"}), 400
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
