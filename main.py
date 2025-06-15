@@ -13,11 +13,22 @@ def get_step_size(symbol):
     try:
         res = requests.get(url)
         data = res.json()
+        # Debug-Ausgabe: gesamte Symbol-Info für das gewünschte Symbol
         for s in data.get("symbols", []):
             if s["symbol"] == symbol:
+                print(f"Symbol gefunden: {symbol}")
+                print("Filters:")
+                for f in s.get("filters", []):
+                    print(f)
+                # Suche LOT_SIZE Filter
                 for f in s.get("filters", []):
                     if f.get("filterType") == "LOT_SIZE":
-                        return float(f.get("stepSize", 1))
+                        step_size = float(f.get("stepSize", 1))
+                        print(f"Gefundene stepSize: {step_size}")
+                        return step_size
+                print("Kein LOT_SIZE Filter gefunden")
+                return None
+        print(f"Symbol {symbol} nicht gefunden in exchangeInfo")
         return None
     except Exception as e:
         print("Fehler beim Abrufen der Step Size:", e)
