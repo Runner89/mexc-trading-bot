@@ -1,83 +1,68 @@
 import os
 from flask import Flask, request
-import time, hmac, hashlib, requests
+import time
+import hmac
+import hashlib
+import requests
 import math
 
 app = Flask(__name__)
 
-def get_exchange_info():
-    """Hole die Handelsspezifikationen für Symbole (inkl. Step Size)."""
+def get_step_size(symbol):
     url = "https://api.mexc.com/api/v3/exchangeInfo"
     try:
-        r = requests.get(url)
-        r.raise_for_status()
-        return r.json()
+        res = requests.get(url)
+        data = res.json()
+        for s in data.get("symbols", []):
+            if s["symbol"] == symbol:
+                for f in s.get("filters", []):
+                    if f.get("filterType") == "LOT_SIZE":
+                        return float(f.get("stepSize", 1))
+        return None
     except Exception as e:
-        print("Error getting exchange info:", e)
+        print("Fehler beim Abrufen der Step Size:", e)
         return None
 
-def get_symbol_info(symbol, exchange_info):
-    """Finde Infos für ein Symbol."""
-    for s in exchange_info.get("symbols", []):
-        if s["symbol"] == symbol:
-            return s
-    return None
-
-def get_current_price(symbol):
-    """Hole aktuellen Preis von MEXC."""
-    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
-    try:
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-        return float(data["price"])
-    except Exception as e:
-        print("Error getting price:", e)
-        return None
-
-def adjust_quantity(quantity, step_size):
-    """Runde quantity auf das Vielfache von step_size ab."""
-    precision = int(round(-math.log10(step_size)))
-    adjusted_qty = math.floor(quantity / step_size) * step_size
-    return f"{adjusted_qty:.{precision}f}"
+def floor_quantity(qty, step):
+    if step == 0:
+        return qty
+    precision = int(round(-math.log10(step), 0))
+    return math.floor(qty / step) * step
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     symbol = data.get("symbol")
-    action = data.get("action")  # z.B. "BUY" oder "SELL"
-    quantity = data.get("quantity")
+    action = data.get("action")  # z.B. BUY oder SELL
     usdt_amount = data.get("usdt_amount")
 
-    if not symbol or not action or (not quantity and not usdt_amount):
-        return "Missing data: symbol, action and quantity or usdt_amount required", 400
+    if not all([symbol, action, usdt_amount]):
+        return "Fehlende Daten: symbol, action oder usdt_amount", 400
 
-    exchange_info = get_exchange_info()
-    if not exchange_info:
-        return "Error fetching exchange info", 500
+    # Step Size abrufen
+    step_size = get_step_size(symbol)
+    if step_size is None:
+        return "Step size für Symbol nicht gefunden", 400
 
-    symbol_info = get_symbol_info(symbol, exchange_info)
-    if not symbol_info:
-        return f"Symbol {symbol} not found", 400
+    # Preis vom Symbol abrufen (notwendig für Menge)
+    # Für einfache Umsetzung holen wir den aktuellen Preis per API:
+    try:
+        price_url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
+        price_res = requests.get(price_url)
+        price_data = price_res.json()
+        price = float(price_data.get("price", 0))
+        if price <= 0:
+            return "Ungültiger Preis vom Symbol", 400
+    except Exception as e:
+        return f"Fehler beim Abrufen des Preises: {e}", 500
 
-    # Finde stepSize in den Filters
-    step_size = None
-    for f in symbol_info["filters"]:
-        if f["filterType"] == "LOT_SIZE":
-            step_size = float(f["stepSize"])
-            break
+    # Menge in Symbol-Units berechnen: usdt_amount / price
+    raw_qty = usdt_amount / price
 
-    if not step_size:
-        return "Step size not found for symbol", 500
-
-    if usdt_amount:
-        price = get_current_price(symbol)
-        if not price:
-            return "Could not get current price", 500
-        qty_float = float(usdt_amount) / price
-        quantity = adjust_quantity(qty_float, step_size)
-    else:
-        quantity = adjust_quantity(float(quantity), step_size)
+    # Menge an Step Size anpassen
+    quantity = floor_quantity(raw_qty, step_size)
+    if quantity <= 0:
+        return "Berechnete Menge ist zu klein nach Runden", 400
 
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
