@@ -18,29 +18,21 @@ def webhook():
     except Exception as e:
         return jsonify({"error": f"Fehler bei API-Anfrage: {str(e)}"}), 500
 
-    # Alle Symbole ausgeben (zum Debuggen, kannst du später entfernen)
-    symbol_list = [s["symbol"] for s in data_api.get("symbols", [])]
-
-    # Versuche, das Symbol im API-Response zu finden
     symbol_info = next((s for s in data_api.get("symbols", []) if s["symbol"] == symbol), None)
     if not symbol_info:
-        return jsonify({
-            "error": "Symbol nicht gefunden",
-            "gesuchte_symbol": symbol,
-            "verfügbare_symbole_beispiel": symbol_list[:10]  # zeige 10 Symbole als Beispiel
-        }), 400
+        return jsonify({"error": "Symbol nicht gefunden"}), 400
 
-    # Zeige Filters des Symbols zum Debuggen
-    filters = symbol_info.get("filters", [])
+    lot_size_filter = next((f for f in symbol_info.get("filters", []) if f.get("filterType") == "LOT_SIZE"), None)
+    if not lot_size_filter:
+        return jsonify({"error": "LOT_SIZE Filter nicht gefunden"}), 400
+
+    step_size = lot_size_filter.get("stepSize")
 
     return jsonify({
         "symbol": symbol,
-        "filters": filters
+        "stepSize": step_size,
+        "filters": symbol_info.get("filters", [])
     }), 200
-
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ MEXC Python Bot läuft"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
