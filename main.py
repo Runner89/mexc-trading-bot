@@ -1,100 +1,71 @@
-import os
+from flask import Flask, request, jsonify
+import requests
 import time
 import hmac
 import hashlib
-import requests
-from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-def get_exchange_info():
-    url = "https://api.mexc.com/api/v3/exchangeInfo"
-    res = requests.get(url)
-    return res.json()
+API_KEY = "dein_api_key"
+API_SECRET = "dein_api_secret"
 
-def get_symbol_info(symbol, exchange_info):
-    for s in exchange_info.get("symbols", []):
-        if s["symbol"] == symbol:
-            return s
-    return None
+BASE_URL = "https://api.mexc.com"
 
-def get_price(symbol):
-    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
-    res = requests.get(url)
-    data = res.json()
-    return float(data.get("price", 0))
+def sign_request(params, secret):
+    query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+    signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    return signature
 
-def get_step_size(filters, baseSizePrecision):
-    # Suche nach LOT_SIZE Filter
-    for f in filters:
-        if f.get("filterType") == "LOT_SIZE":
-            step = float(f.get("stepSize", 1))
-            if step > 0:
-                return step
-    # Falls kein LOT_SIZE Filter, berechne step_size aus baseSizePrecision
-    try:
-        precision = int(baseSizePrecision)
-        return 10 ** (-precision)
-    except:
-        return 1
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    symbol = data.get("symbol")
-    usdt_amount = data.get("usdt_amount")
-
-    if not symbol or not usdt_amount:
-        return jsonify({"error": "symbol und usdt_amount müssen angegeben werden"}), 400
-
-    # 1. Exchange Info holen
-    exchange_info = get_exchange_info()
-    symbol_info = get_symbol_info(symbol, exchange_info)
-
-    if not symbol_info:
-        return jsonify({"error": "Symbol nicht gefunden"}), 400
-
-    filters = symbol_info.get("filters", [])
-    baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
-
-    step_size = get_step_size(filters, baseSizePrecision)
-
-    # 2. Preis holen
-    price = get_price(symbol)
-    if price == 0:
-        return jsonify({"error": "Preis für Symbol nicht gefunden"}), 400
-
-    # 3. Menge berechnen (usdt_amount / price), auf Schrittgröße abrunden
-    quantity = usdt_amount / price
-    # Abrunden auf Vielfaches von step_size:
-    quantity = quantity - (quantity % step_size)
-    quantity = round(quantity, 8)  # auf 8 Dezimalstellen runden
-
-    if quantity <= 0:
-        return jsonify({"error": "Berechnete Menge ist 0 oder negativ"}), 400
-
-    # 4. Order absenden
+def get_account_info():
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&side=BUY&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    params = {
+        "timestamp": timestamp
+    }
+    params["signature"] = sign_request(params, API_SECRET)
+    headers = {
+        "X-MEXC-APIKEY": API_KEY
+    }
+    resp = requests.get(f"{BASE_URL}/api/v3/account", params=params, headers=headers)
+    return resp.json()
 
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
+def market_sell(symbol, quantity):
+    timestamp = int(time.time() * 1000)
+    params = {
+        "symbol": symbol,
+        "side": "SELL",
+        "type": "MARKET",
+        "quantity": quantity,
+        "timestamp": timestamp
+    }
+    params["signature"] = sign_request(params, API_SECRET)
+    headers = {
+        "X-MEXC-APIKEY": API_KEY
+    }
+    resp = requests.post(f"{BASE_URL}/api/v3/order", params=params, headers=headers)
+    return resp.json()
 
-    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
+@app.route("/close_donkey_position", methods=["POST"])
+def close_donkey_position():
+    symbol = "DONKEYUSDT"
+    account_info = get_account_info()
+    
+    if "balances" not in account_info:
+        return jsonify({"error": "Konto-Info konnte nicht abgerufen werden", "details": account_info}), 500
+    
+    donkey_amount = 0
+    for asset in account_info["balances"]:
+        if asset["asset"] == "DONKEY":
+            donkey_amount = float(asset["free"])
+            break
 
-    try:
-        response = requests.post(url, headers=headers)
-        return response.json(), response.status_code
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ MEXC Python Bot läuft"
+    if donkey_amount <= 0:
+        return jsonify({"message": "Keine DONKEY-Position zum Schließen gefunden."}), 400
+    
+    # Menge runden auf 2 Dezimalstellen, da baseAssetPrecision=2
+    quantity = round(donkey_amount, 2)
+    
+    order_result = market_sell(symbol, quantity)
+    return jsonify(order_result)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(port=10000)
