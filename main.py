@@ -28,11 +28,10 @@ def webhook():
 
     step_size = lot_size_filter.get("stepSize")
 
-    return jsonify({
-        "symbol": symbol,
-        "stepSize": step_size,
-        "filters": symbol_info.get("filters", [])
-    }), 200
+return jsonify({
+    "symbol": symbol,
+    "filters": symbol_info.get("filters", [])
+}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
