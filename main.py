@@ -10,11 +10,29 @@ CORS(app)
 def webhook():
     data = request.get_json()
     symbol = data.get("symbol")
-    action = data.get("action")
+    action = data.get("action") or data.get("side")
+    usdt_amount = data.get("usdt_amount")
     quantity = data.get("quantity")
 
-    if not all([symbol, action, quantity]):
-        return "Missing data", 400
+    if not all([symbol, action]):
+        return "Missing symbol or action", 400
+
+    # Wenn usdt_amount angegeben ist, berechne quantity anhand aktuellem Preis
+    if usdt_amount is not None:
+        price_url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
+        try:
+            price_response = requests.get(price_url)
+            price_response.raise_for_status()
+            price = float(price_response.json().get("price", 0))
+            if price <= 0:
+                return "Invalid price from MEXC", 500
+            quantity = float(usdt_amount) / price
+            # Optional: Runde quantity auf 4 Dezimalstellen (anpassen je nach Symbol)
+            quantity = round(quantity, 4)
+        except Exception as e:
+            return f"Error getting price: {str(e)}", 500
+    elif quantity is None:
+        return "Missing quantity or usdt_amount", 400
 
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
