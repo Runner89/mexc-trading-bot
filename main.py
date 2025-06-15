@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 import requests
 
@@ -20,18 +21,33 @@ def webhook():
 
     symbol_info = next((s for s in data_api.get("symbols", []) if s["symbol"] == symbol), None)
     if not symbol_info:
-        return jsonify({"error": "Symbol nicht gefunden"}), 400
+        return jsonify({
+            "error": "Symbol nicht gefunden",
+            "gesuchte_symbol": symbol,
+            "verfügbare_symbole_beispiel": [s["symbol"] for s in data_api.get("symbols", [])[:10]]
+        }), 400
 
-    lot_size_filter = next((f for f in symbol_info.get("filters", []) if f.get("filterType") == "LOT_SIZE"), None)
+    filters = symbol_info.get("filters", [])
+
+    lot_size_filter = next((f for f in filters if f.get("filterType") == "LOT_SIZE"), None)
     if not lot_size_filter:
-        return jsonify({"error": "LOT_SIZE Filter nicht gefunden"}), 400
+        return jsonify({
+            "error": "LOT_SIZE Filter nicht gefunden",
+            "symbol": symbol,
+            "filters": filters
+        }), 400
 
-    step_size = lot_size_filter.get("stepSize")
+    # Optional: hier kannst du weitere Logik einbauen, z.B. Menge validieren etc.
 
-return jsonify({
-    "symbol": symbol,
-    "filters": symbol_info.get("filters", [])
-}), 200
+    return jsonify({
+        "message": f"Symbol {symbol} gefunden mit LOT_SIZE Filter",
+        "lot_size_filter": lot_size_filter
+    }), 200
+
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ MEXC Trading Bot läuft"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
