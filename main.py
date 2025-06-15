@@ -5,10 +5,10 @@ import hashlib
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
+from zoneinfo import ZoneInfo  # Für Zeitzonen ab Python 3.9+
 
 app = Flask(__name__)
 
-# 📌 Hole Exchange-Infos (Precision usw.)
 def get_exchange_info():
     url = "https://api.mexc.com/api/v3/exchangeInfo"
     res = requests.get(url)
@@ -53,7 +53,6 @@ def get_balance(asset):
             return float(item.get("free", 0))
     return 0
 
-# 📬 Webhook-Route für Kauf oder Verkauf
 @app.route("/webhook", methods=["POST"])
 def webhook():
     start_time = time.time()
@@ -65,7 +64,6 @@ def webhook():
     if not symbol:
         return jsonify({"error": "symbol fehlt"}), 400
 
-    # Hole Exchange-Infos
     exchange_info = get_exchange_info()
     symbol_info = get_symbol_info(symbol, exchange_info)
     if not symbol_info:
@@ -75,12 +73,10 @@ def webhook():
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
     step_size = get_step_size(filters, baseSizePrecision)
 
-    # Preis holen
     price = get_price(symbol)
     if price == 0:
         return jsonify({"error": "Preis nicht verfügbar"}), 400
 
-    # Menge berechnen
     if action == "BUY":
         usdt_amount = data.get("usdt_amount")
         if not usdt_amount:
@@ -95,7 +91,6 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig"}), 400
 
-    # Order abschicken
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -109,12 +104,13 @@ def webhook():
         response_time = (time.time() - start_time) * 1000
         order_data = response.json()
 
-        # Zeit-Infos hinzufügen
         order_data["responseTime"] = f"{response_time:.2f} ms"
+
+        # ✅ Zeit konvertieren in deine lokale Zeitzone (z.B. Berlin)
         if "transactTime" in order_data:
-            order_data["transactTimeReadable"] = datetime.fromtimestamp(
-                order_data["transactTime"] / 1000
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            utc_dt = datetime.utcfromtimestamp(order_data["transactTime"] / 1000)
+            berlin_time = utc_dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/Berlin"))
+            order_data["transactTimeReadable"] = berlin_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
         return jsonify(order_data), response.status_code
     except Exception as e:
