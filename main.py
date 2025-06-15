@@ -1,8 +1,10 @@
 import os
 from flask import Flask, request
 import time, hmac, hashlib, requests
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
