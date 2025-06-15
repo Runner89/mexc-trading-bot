@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import requests
 from flask import Flask, request, jsonify
+import datetime
 
 app = Flask(__name__)
 
@@ -24,65 +25,35 @@ def get_price(symbol):
     data = res.json()
     return float(data.get("price", 0))
 
-def get_step_size_and_precision(filters, baseSizePrecision):
-    """
-    Liefert tuple (step_size, precision).
-    - step_size aus LOT_SIZE Filter oder aus baseSizePrecision.
-    - precision = Anzahl Dezimalstellen, passend zur step_size.
-    """
-    step_size = None
+def get_step_size(filters, baseSizePrecision):
+    # Suche nach LOT_SIZE Filter
     for f in filters:
         if f.get("filterType") == "LOT_SIZE":
-            step_size = float(f.get("stepSize", 1))
-            break
-    if step_size is None or step_size == 0:
-        # fallback auf baseSizePrecision
-        try:
-            precision = int(baseSizePrecision)
-            step_size = 10 ** (-precision)
-        except:
-            step_size = 1
-            precision = 0
-    else:
-        # precision ermitteln, z.B. step_size=0.001 -> precision=3
-        precision = max(-int(round(math.log10(step_size))), 0)
-    return step_size, precision
+            step = float(f.get("stepSize", 1))
+            if step > 0:
+                return step
+    # Falls kein LOT_SIZE Filter, berechne step_size aus baseSizePrecision
+    try:
+        precision = int(baseSizePrecision)
+        return 10 ** (-precision)
+    except:
+        return 1
 
-def get_account_balance(asset):
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
-    timestamp = int(time.time() * 1000)
-    params = {
-        "timestamp": timestamp
-    }
-    query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
-    signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/account?{query_string}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-    resp = requests.get(url, headers=headers)
-    data = resp.json()
-    if "balances" in data:
-        for b in data["balances"]:
-            if b["asset"] == asset:
-                return float(b["free"])
-    return 0
-
-import math
+def format_transact_time(timestamp_ms):
+    dt = datetime.datetime.fromtimestamp(timestamp_ms / 1000)
+    return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     symbol = data.get("symbol")
-    side = data.get("side", "BUY").upper()
     usdt_amount = data.get("usdt_amount")
-    quantity = data.get("quantity")
+    side = data.get("side", "BUY").upper()
 
-    if not symbol:
-        return jsonify({"error": "symbol muss angegeben werden"}), 400
+    if not symbol or (side == "BUY" and not usdt_amount):
+        return jsonify({"error": "symbol und usdt_amount (bei BUY) müssen angegeben werden"}), 400
 
-    if side not in ["BUY", "SELL"]:
-        return jsonify({"error": "side muss BUY oder SELL sein"}), 400
-
+    # Exchange Info holen
     exchange_info = get_exchange_info()
     symbol_info = get_symbol_info(symbol, exchange_info)
 
@@ -92,52 +63,69 @@ def webhook():
     filters = symbol_info.get("filters", [])
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
 
-    step_size, precision = get_step_size_and_precision(filters, baseSizePrecision)
+    step_size = get_step_size(filters, baseSizePrecision)
 
-    # Menge ermitteln:
-    if side == "SELL":
-        if quantity is None:
-            # Ganze Position verkaufen
-            asset = symbol.replace("USDT", "")
-            balance = get_account_balance(asset)
-            if balance <= 0:
-                return jsonify({"error": f"Keine {asset}-Position zum Verkaufen gefunden"}), 400
-            quantity = balance
-        else:
-            quantity = float(quantity)
-            if quantity <= 0:
-                return jsonify({"error": "quantity muss größer als 0 sein"}), 400
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+
+    timestamp = int(time.time() * 1000)
+
+    headers = {"X-MEXC-APIKEY": api_key}
 
     if side == "BUY":
-        if usdt_amount is None:
-            return jsonify({"error": "usdt_amount muss beim Kauf angegeben werden"}), 400
         price = get_price(symbol)
         if price == 0:
             return jsonify({"error": "Preis für Symbol nicht gefunden"}), 400
         quantity = usdt_amount / price
-
-    # Auf Schrittgröße abrunden
-    quantity = math.floor(quantity / step_size) * step_size
-
-    # Auf korrekte Dezimalstellen runden
-    quantity = round(quantity, precision)
-
-    if quantity <= 0:
-        return jsonify({"error": "Berechnete Menge ist 0 oder negativ"}), 400
-
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&side={side}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
-
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
+        quantity = quantity - (quantity % step_size)
+        quantity = round(quantity, 8)
+        if quantity <= 0:
+            return jsonify({"error": "Berechnete Menge ist 0 oder negativ"}), 400
+        query = f"symbol={symbol}&side=BUY&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    elif side == "SELL":
+        # Komplett verkaufen: Menge aus Kontostand holen
+        # Konto-Info holen
+        params_account = {"timestamp": timestamp}
+        params_account["signature"] = hmac.new(secret.encode(), "&".join(f"{k}={v}" for k,v in sorted(params_account.items())).encode(), hashlib.sha256).hexdigest()
+        headers_account = {"X-MEXC-APIKEY": api_key}
+        resp_account = requests.get(f"https://api.mexc.com/api/v3/account", params=params_account, headers=headers_account)
+        account_info = resp_account.json()
+        if "balances" not in account_info:
+            return jsonify({"error": "Konto-Info konnte nicht abgerufen werden", "details": account_info}), 500
+        base_asset = symbol[:-4] if symbol.endswith("USDT") else symbol[:-3]  # Basis-Asset extrahieren, z.B. DONKEY aus DONKEYUSDT
+        free_amount = 0
+        for asset in account_info["balances"]:
+            if asset["asset"] == base_asset:
+                free_amount = float(asset["free"])
+                break
+        if free_amount <= 0:
+            return jsonify({"error": f"Keine {base_asset} Menge zum Verkaufen gefunden"}), 400
+        quantity = free_amount - (free_amount % step_size)
+        quantity = round(quantity, 8)
+        if quantity <= 0:
+            return jsonify({"error": "Berechnete Menge ist 0 oder negativ"}), 400
+        query = f"symbol={symbol}&side=SELL&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    else:
+        return jsonify({"error": "Nur side BUY oder SELL unterstützt"}), 400
 
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
+
+    start_time = time.time()  # Startzeit messen
 
     try:
         response = requests.post(url, headers=headers)
-        return response.json(), response.status_code
+        end_time = time.time()  # Endzeit messen
+        response_time = round((end_time - start_time) * 1000, 2)  # Zeit in Millisekunden
+
+        result = response.json()
+        if "transactTime" in result:
+            result["transactTimeReadable"] = format_transact_time(result["transactTime"])
+        
+        # Füge die Zeitdauer der Antwort hinzu
+        result["responseTime"] = f"{response_time} ms"
+
+        return jsonify(result), response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
