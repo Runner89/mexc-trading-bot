@@ -294,6 +294,7 @@ def webhook():
         "timestamp": timestamp_berlin,
         "duration_ms": round(response_time, 2),
         "durchschnittlicher_kaufpreis": round(durchschnittlicher_kaufpreis, 8),
+        "alle_kaufpreise": kaufpreise_liste,
         **debug_info
     }
 
