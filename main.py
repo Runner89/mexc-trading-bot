@@ -5,7 +5,7 @@ import hashlib
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
-from zoneinfo import ZoneInfo  # Python 3.9+
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
@@ -19,10 +19,10 @@ def firebase_loesche_kaufpreise(asset):
     print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
 
 def firebase_speichere_kaufpreis(asset, price):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"  # das ist ok, wenn du neue Einträge erzeugst
-    data = {"price": price, "timestamp": int(time.time())}
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    data = {"price": price}
     response = requests.post(url, json=data)
-    print(f"Kaufpreis gespeichert für {asset}: {price} (Status {response.status_code})")
+    print(f"Kaufpreis gespeichert für {asset}: {price}")
 
 def firebase_get_kaufpreise(asset):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
@@ -75,7 +75,7 @@ def get_price_precision(filters):
             if '.' in tick_size:
                 decimals = len(tick_size.split('.')[1].rstrip('0'))
                 return decimals
-    return 8  # Default-Fallback
+    return 8
 
 def get_balance(asset):
     timestamp = int(time.time() * 1000)
@@ -137,14 +137,10 @@ def place_limit_sell_order(symbol, quantity, price):
         print(f"Fehler bei Sell-Limit-Order: {res.text}")
         return None
 
-# --- Hilfsfunktion für quantity-Rundung ---
-
 def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
-
-# --- Neue Funktion: Trades (Fills) zu einer Order holen ---
 
 def get_order_fills(symbol, order_id):
     timestamp = int(time.time() * 1000)
@@ -204,9 +200,11 @@ def webhook():
 
     base_asset = symbol.replace("USDT", "")
 
-    # Prüfen, ob offene Position besteht, wenn nicht, Firebase löschen
-    #if not has_open_position(symbol):
-        #firebase_loesche_kaufpreise(base_asset)
+    # Nur bei einem Kauf prüfen, ob Position leer ist → dann Firebase löschen
+    if action == "BUY":
+        if not has_open_position(symbol):
+            firebase_loesche_kaufpreise(base_asset)
+            print(f"Keine offene Position in {base_asset}, Firebase-Kaufpreise gelöscht.")
 
     if action == "BUY":
         if not usdt_amount:
@@ -219,7 +217,6 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig"}), 400
 
-    # Kauf-Order senden (MARKET)
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -237,9 +234,7 @@ def webhook():
     order_data = response.json()
     order_id = order_data.get("orderId")
 
-    # Warte 1 Sekunde, um sicherzugehen, dass Trades registriert sind
     time.sleep(1)
-
     fills = get_order_fills(symbol, order_id)
 
     if fills:
@@ -250,14 +245,11 @@ def webhook():
         price_precision = get_price_precision(filters)
         executed_price_float = round(executed_price, price_precision)
 
-    # Kaufpreis in Firebase speichern
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
-    # Offene Sell-Orders löschen
     delete_open_sell_orders(symbol)
 
-    # Limit Sell Order, falls konfiguriert
     if limit_sell_percent:
         limit_sell_price = round(executed_price_float * (1 + limit_sell_percent / 100), get_price_precision(filters))
         balance = get_balance(base_asset)
