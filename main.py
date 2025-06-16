@@ -54,14 +54,13 @@ def get_balance(asset):
             return float(item.get("free", 0))
     return 0
 
-def has_open_position(symbol):
-    # Prüfen, ob symbol im Format "DONKEY/USDT" vorliegt
+def has_open_position(symbol, threshold=0.0001):
     if "/" in symbol:
         base_asset = symbol.split("/")[0]
     else:
         base_asset = symbol.replace("USDT", "")
     balance = get_balance(base_asset)
-    return balance > 0, base_asset, balance
+    return balance > threshold, base_asset, balance
 
 def get_exchange_info():
     url = "https://api.mexc.com/api/v3/exchangeInfo"
