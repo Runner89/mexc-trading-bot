@@ -61,7 +61,8 @@ def has_open_position(symbol, threshold=0.0001):
         base_asset = symbol.replace("USDT", "")
 
     balance = wait_for_balance(base_asset, retries=5, delay=1)
-    offene_position = balance > 0
+    offene_position = balance > threshold
+    return offene_position, base_asset, balance
 
 def get_exchange_info():
     url = "https://api.mexc.com/api/v3/exchangeInfo"
