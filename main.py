@@ -84,13 +84,11 @@ def get_balance(asset):
     return 0
 
 def has_open_position(symbol):
-    # Prüfen, ob offene Positionen für symbol bestehen (Spot: check balance > 0)
     base_asset = symbol.replace("USDT", "")
     balance = get_balance(base_asset)
     return balance > 0
 
 def delete_open_sell_orders(symbol):
-    # Hol alle offenen Sell-Limit-Orders und lösche sie
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -130,13 +128,24 @@ def place_limit_sell_order(symbol, quantity, price):
         print(f"Fehler bei Sell-Limit-Order: {res.text}")
         return None
 
-# --- Hilfsfunktion für quantity-Rundung ---
-
 def adjust_quantity(quantity, step_size):
-    # Runden auf nächstkleinere Vielfache von step_size
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
+
+# Neue Funktion, um Order-Details mit Fills abzufragen
+def get_order_details(symbol, order_id):
+    timestamp = int(time.time() * 1000)
+    query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print("Fehler beim Abrufen der Orderdetails:", res.text)
+        return None
+    return res.json()
 
 # --- Webhook ---
 
@@ -199,7 +208,20 @@ def webhook():
         return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json()}), 400
 
     order_data = response.json()
-    executed_price = float(order_data.get("price", price))  # Falls kein price, fallback auf aktueller price
+
+    # Jetzt echte Order-Details abfragen, um den Ausführungspreis zu erhalten
+    order_details = get_order_details(symbol, order_data.get("orderId"))
+    if order_details and "fills" in order_details and len(order_details["fills"]) > 0:
+        total_qty = 0
+        total_cost = 0
+        for fill in order_details["fills"]:
+            qty = float(fill["qty"])
+            fill_price = float(fill["price"])
+            total_qty += qty
+            total_cost += fill_price * qty
+        executed_price = total_cost / total_qty if total_qty > 0 else price
+    else:
+        executed_price = price  # Fallback
 
     # Kaufspeichern in Firebase (nur bei Kauf)
     if action == "BUY":
@@ -231,6 +253,7 @@ def webhook():
     result = {
         "order": order_data,
         "sell_limit_order": sell_order,
+        "executed_price": executed_price
     }
     return jsonify(result), 200
 
