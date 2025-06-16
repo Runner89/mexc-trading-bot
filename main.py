@@ -159,11 +159,10 @@ def webhook():
 
     base_asset = symbol.replace("USDT", "")
 
-    if action == "BUY":
+      if action == "BUY":
         if not usdt_amount:
             return jsonify({"error": "usdt_amount fehlt für BUY"}), 400
 
-        # Wenn keine offene Position, alte Kaufpreise löschen
         if get_balance(base_asset) == 0:
             firebase_loesche_kaufpreise(base_asset)
 
@@ -183,19 +182,21 @@ def webhook():
         else:
             avg_price = price
 
-        # Speicher- und Limit-Sell-Task im Hintergrund
-        def speicher_und_sell():
-            firebase_speichere_kaufpreis(base_asset, avg_price)
-            hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size)
+        # Speichern & Abrufen des neuen Durchschnittspreises synchron
+        firebase_speichere_kaufpreis(base_asset, avg_price)
+        kaufpreise = firebase_get_kaufpreise(base_asset)
+        neuer_durchschnitt = berechne_durchschnittspreis(kaufpreise)
 
-        threading.Thread(target=speicher_und_sell).start()
+        # Optional: Hintergr. Verkauf weiter async
+        threading.Thread(target=lambda: hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size)).start()
 
         response_time = (time.time() - start_time) * 1000
         buy_order["responseTime"] = f"{response_time:.2f} ms"
         buy_order["transactTimeReadable"] = datetime.fromtimestamp(buy_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        buy_order["averagePrice"] = avg_price  # Durchschnittspreis als Feedback hinzufügen
+        buy_order["averagePrice"] = neuer_durchschnitt  # <-- jetzt: globaler Mittelwert aller Kaufpreise
 
         return jsonify(buy_order), 200
+
 
     elif action == "SELL":
         quantity = data.get("quantity")
