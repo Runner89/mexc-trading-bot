@@ -41,19 +41,31 @@ def sign_request(query_string):
 
 def has_open_position(symbol):
     timestamp = int(time.time() * 1000)
-    query = f"timestamp={timestamp}"
-    signature = sign_request(query)
-    url = f"https://api.mexc.com/api/v3/position/open?{query}&signature={signature}"
-    headers = get_headers()
+    query = f"symbol={symbol}&timestamp={timestamp}"
+    signature = hmac.new(
+        os.environ.get("MEXC_SECRET_KEY", "").encode(),
+        query.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
     response = requests.get(url, headers=headers)
+    print("Status:", response.status_code)
+    print("Antwort:", response.text)
     if response.status_code != 200:
-        print("Fehler beim Abfragen der offenen Positionen:", response.text)
         return False
-    data = response.json()
-    for pos in data.get("data", []):
-        if pos.get("symbol") == symbol and float(pos.get("positionAmt", 0)) != 0:
+    try:
+        data = response.json()
+    except Exception as e:
+        print("JSON Fehler:", e)
+        return False
+
+    # Offene Orders für das Symbol vorhanden?
+    for order in data:
+        if order.get("symbol") == symbol:
             return True
     return False
+
 
 def berechne_durchschnittspreis(preise):
     if not preise:
