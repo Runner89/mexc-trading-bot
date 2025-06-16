@@ -205,8 +205,8 @@ def webhook():
     base_asset = symbol.replace("USDT", "")
 
     # Prüfen, ob offene Position besteht, wenn nicht, Firebase löschen
-    if not has_open_position(symbol):
-        firebase_loesche_kaufpreise(base_asset)
+    #if not has_open_position(symbol):
+        #firebase_loesche_kaufpreise(base_asset)
 
     if action == "BUY":
         if not usdt_amount:
