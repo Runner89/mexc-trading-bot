@@ -267,7 +267,7 @@ def webhook():
 
     # Kaufpreis in Firebase speichern (nur bei BUY)
     if action == "BUY":
-       preis_override = data.get("Preis")
+        preis_override = data.get("Preis")
         preis_zum_speichern = float(preis_override) if preis_override else executed_price_float
         firebase_speichere_kaufpreis(base_asset, preis_zum_speichern)
 
