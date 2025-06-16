@@ -213,4 +213,5 @@ def webhook():
         return jsonify({"error": "Unbekannte Aktion"}), 400
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Port von Render wird automatisch über Umgebungsvariable gesetzt
+    app.run(host="0.0.0.0", port=port, debug=True)
