@@ -285,6 +285,14 @@ def webhook():
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
         create_limit_sell_order(symbol, quantity, price_rounded)
+
+    # Berechnung des Verkaufspreises basierend auf dem Durchschnittspreis + Prozentsatz
+    if limit_sell_percent is not None and durchschnittlicher_kaufpreis > 0:
+        limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
+        price_rounded = round(limit_sell_price, get_price_precision(filters))
+    else:
+        limit_sell_price = 0  # Falls keine gültige Prozentzahl oder Durchschnittspreis vorhanden ist
+        price_rounded = 0
     
     result = {
         "symbol": symbol,
@@ -294,6 +302,7 @@ def webhook():
         "timestamp": timestamp_berlin,
         "duration_ms": round(response_time, 2),
         "durchschnittlicher_kaufpreis": round(durchschnittlicher_kaufpreis, 8),
+        "limit_sell_order_price": limit_sell_price,  # Hier der berechnete Verkaufspreis
         "alle_kaufpreise": kaufpreise_liste,
         **debug_info
     }
