@@ -59,8 +59,9 @@ def has_open_position(symbol, threshold=0.0001):
         base_asset = symbol.split("/")[0]
     else:
         base_asset = symbol.replace("USDT", "")
-    balance = get_balance(base_asset)
-    return balance > threshold, base_asset, balance
+
+    balance = wait_for_balance(base_asset, retries=5, delay=1)
+    offene_position = balance > 0
 
 def get_exchange_info():
     url = "https://api.mexc.com/api/v3/exchangeInfo"
@@ -181,7 +182,13 @@ def create_limit_sell_order(symbol, quantity, price):
     else:
         print(f"Fehler beim Erstellen der Limit Sell Order: {res.text}")
         return None
-
+def wait_for_balance(asset, retries=5, delay=1):
+    for i in range(retries):
+        balance = get_balance(asset)
+        if balance > 0:
+            return balance
+        time.sleep(delay)
+    return 0
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
