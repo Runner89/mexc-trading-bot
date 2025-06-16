@@ -284,10 +284,9 @@ def webhook():
 
     # Neue Limit Sell Order mit durchschnittlichem Kaufpreis setzen (wenn Menge > 0)
     if quantity > 0 and durchschnittlicher_kaufpreis > 0:
-    
     # Rundung für Preis anpassen, z.B. 8 Dezimalstellen
-    price_rounded = round(durchschnittlicher_kaufpreis, get_price_precision(filters))
-    create_limit_sell_order(symbol, quantity, price_rounded)
+        price_rounded = round(durchschnittlicher_kaufpreis, get_price_precision(filters))
+        create_limit_sell_order(symbol, quantity, price_rounded)
     
     result = {
         "symbol": symbol,
