@@ -235,14 +235,41 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
 
-    # Speichern des Preises aus dem JSON in Firebase (nicht der effektive MEXC-Kaufpreis)
+    # Kauf-Order senden (MARKET)
+    timestamp = int(time.time() * 1000)
+    query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    response = requests.post(url, headers=headers)
+    response_time = (time.time() - start_time) * 1000
+
+    if response.status_code != 200:
+        return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json(), **debug_info}), 400
+
+    order_data = response.json()
+    order_id = order_data.get("orderId")
+
+    time.sleep(1)
+
+    fills = get_order_fills(symbol, order_id)
+
+    if fills:
+        executed_price_float = calculate_average_fill_price(fills)
+    else:
+        print("Warnung: Keine fills für die Order gefunden, Fallback auf Orderpreis")
+        executed_price = float(order_data.get("price", price))
+        price_precision = get_price_precision(filters)
+        executed_price_float = round(executed_price, price_precision)
+
+    # Kaufpreis in Firebase speichern (nur bei BUY)
     if action == "BUY":
-        price_from_json = data.get("Preis")  # Preis vom JSON
-        if price_from_json:
-            firebase_speichere_kaufpreis(base_asset, price_from_json)
-            executed_price_float = price_from_json
-        else:
-            return jsonify({"error": "Preis im JSON fehlt", **debug_info}), 400
+       preis_override = data.get("Preis")
+        preis_zum_speichern = float(preis_override) if preis_override else executed_price_float
+        firebase_speichere_kaufpreis(base_asset, preis_zum_speichern)
 
     # Durchschnittlicher Kaufpreis aus Firebase holen
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset)
