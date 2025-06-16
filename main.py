@@ -297,6 +297,7 @@ def webhook():
         "action": action,
         "executed_price": executed_price_float,
         "durchschnittspreis": durchschnittlicher_kaufpreis,
+        "kaufpreise_alle": kaufpreise_liste,  # <-- Hier alle Preise mit einfügen
         "timestamp": timestamp_berlin,
         "debug": debug_info,
         "limit_sell_price": limit_sell_price,
