@@ -68,15 +68,6 @@ def get_step_size(filters, baseSizePrecision):
     except:
         return 1
 
-def get_price_precision(filters):
-    for f in filters:
-        if f.get("filterType") == "PRICE_FILTER":
-            tick_size = f.get("tickSize", "1")
-            if '.' in tick_size:
-                decimals = len(tick_size.split('.')[1].rstrip('0'))
-                return decimals
-    return 8  # Default-Fallback
-
 def get_balance(asset):
     timestamp = int(time.time() * 1000)
     params = f"timestamp={timestamp}"
@@ -137,12 +128,41 @@ def place_limit_sell_order(symbol, quantity, price):
         print(f"Fehler bei Sell-Limit-Order: {res.text}")
         return None
 
-# --- Hilfsfunktion für quantity-Rundung ---
-
 def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
+
+# --- Neu: Durchschnittlichen Ausführungspreis aus Trades abfragen ---
+
+def get_avg_fill_price(symbol, order_id):
+    timestamp = int(time.time() * 1000)
+    query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print(f"Fehler beim Abrufen der Trades: {res.text}")
+        return 0
+
+    trades = res.json()
+    if not trades:
+        return 0
+
+    total_qty = 0
+    total_cost = 0
+    for trade in trades:
+        qty = float(trade['qty'])
+        price = float(trade['price'])
+        total_qty += qty
+        total_cost += price * qty
+
+    if total_qty == 0:
+        return 0
+    return total_cost / total_qty
 
 # --- Webhook ---
 
@@ -174,7 +194,6 @@ def webhook():
 
     base_asset = symbol.replace("USDT", "")
 
-    # Prüfen, ob offene Position besteht, wenn nicht, Firebase löschen
     if not has_open_position(symbol):
         firebase_loesche_kaufpreise(base_asset)
 
@@ -205,38 +224,47 @@ def webhook():
         return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json()}), 400
 
     order_data = response.json()
-    executed_price = float(order_data.get("price", price))  # Falls kein price, fallback auf aktueller price
 
-    # Präzision des Preises holen und Preis entsprechend formatieren
-    price_precision = get_price_precision(filters)
-    executed_price_str = f"{executed_price:.{price_precision}f}"
-    executed_price_float = float(executed_price_str)
+    # Jetzt den effektiven durchschnittlichen Ausführungspreis aus den Trades holen
+    executed_price = get_avg_fill_price(symbol, order_data["orderId"])
+    if executed_price == 0:
+        # Fallback auf Rückgabe oder aktuellen Preis
+        executed_price = float(order_data.get("price", price))
 
-    # Kaufspeichern in Firebase (nur bei Kauf)
+    # Auf die richtige Präzision runden (gleiche Anzahl Nachkommastellen wie step_size)
+    precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
+    executed_price = round(executed_price, precision)
+
     if action == "BUY":
-        firebase_speichere_kaufpreis(base_asset, executed_price_float)
+        firebase_speichere_kaufpreis(base_asset, executed_price)
 
-    # Durchschnittspreis berechnen
     preise = firebase_get_kaufpreise(base_asset)
     average_price = berechne_durchschnittspreis(preise)
 
-    # Sell-Limit Order nur, wenn limit_sell_percent angegeben ist
     if limit_sell_percent is not None:
-        # Vorher alle offenen Sell-Limit-Orders löschen
         delete_open_sell_orders(symbol)
-
         limit_price = average_price * (1 + (float(limit_sell_percent) / 100))
-        limit_price = round(limit_price, price_precision)
+        limit_price = round(limit_price, precision)
+        sell_order = place_limit_sell_order(symbol, quantity, limit_price)
+    else:
+        sell_order = None
 
-        if quantity > 0 and limit_price > 0:
-            place_limit_sell_order(symbol, quantity, limit_price)
+    order_data["responseTime"] = f"{response_time:.2f} ms"
+    if "transactTime" in order_data:
+        utc_dt = datetime.utcfromtimestamp(order_data["transactTime"] / 1000)
+        berlin_time = utc_dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/Berlin"))
+        order_data["transactTimeReadable"] = berlin_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
-    return jsonify({
-        "message": "Order erfolgreich ausgeführt",
-        "executed_price": executed_price_float,
-        "average_price": average_price,
-        "response_time_ms": response_time
-    })
+    result = {
+        "order": order_data,
+        "sell_limit_order": sell_order,
+    }
+    return jsonify(result), 200
+
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ MEXC Webhook läuft!"
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
