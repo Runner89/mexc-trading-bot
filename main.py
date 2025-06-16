@@ -5,7 +5,7 @@ import hashlib
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
@@ -46,12 +46,12 @@ def get_exchange_info():
 
 def get_symbol_info(symbol, exchange_info):
     for s in exchange_info.get("symbols", []):
-        if s["symbol"] == symbol:
+        if s["symbol"] == symbol.replace("/", ""):  # Remove '/' falls vorhanden
             return s
     return None
 
 def get_price(symbol):
-    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol}"
+    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol.replace('/', '')}"
     res = requests.get(url)
     data = res.json()
     return float(data.get("price", 0))
@@ -75,7 +75,7 @@ def get_price_precision(filters):
             if '.' in tick_size:
                 decimals = len(tick_size.split('.')[1].rstrip('0'))
                 return decimals
-    return 8
+    return 8  # Default-Fallback
 
 def get_balance(asset):
     timestamp = int(time.time() * 1000)
@@ -92,19 +92,15 @@ def get_balance(asset):
             return float(item.get("free", 0))
     return 0
 
-def has_open_position(symbol, exchange_info):
-    symbol_info = get_symbol_info(symbol, exchange_info)
-    if not symbol_info:
-        print(f"Symbolinfo für {symbol} nicht gefunden.")
-        return False
-    base_asset = symbol_info.get("baseAsset", "")
+def has_open_position(symbol):
+    base_asset = get_base_asset_from_symbol(symbol)
     balance = get_balance(base_asset)
-    print(f"[has_open_position] Balance von {base_asset}: {balance}")
-    return balance > 0.0001
+    print(f"Prüfung offene Position für {base_asset}: Balance = {balance}")
+    return balance > 0
 
 def delete_open_sell_orders(symbol):
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&timestamp={timestamp}"
+    query = f"symbol={symbol.replace('/', '')}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -120,7 +116,7 @@ def delete_open_sell_orders(symbol):
     for order in orders:
         if order["side"] == "SELL" and order["type"] == "LIMIT":
             order_id = order["orderId"]
-            cancel_query = f"symbol={symbol}&orderId={order_id}&timestamp={int(time.time()*1000)}"
+            cancel_query = f"symbol={symbol.replace('/', '')}&orderId={order_id}&timestamp={int(time.time()*1000)}"
             cancel_signature = hmac.new(secret.encode(), cancel_query.encode(), hashlib.sha256).hexdigest()
             cancel_url = f"https://api.mexc.com/api/v3/order?{cancel_query}&signature={cancel_signature}"
             cancel_res = requests.delete(cancel_url, headers=headers)
@@ -128,7 +124,7 @@ def delete_open_sell_orders(symbol):
 
 def place_limit_sell_order(symbol, quantity, price):
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&side=SELL&type=LIMIT&quantity={quantity}&price={price}&timeInForce=GTC&timestamp={timestamp}"
+    query = f"symbol={symbol.replace('/', '')}&side=SELL&type=LIMIT&quantity={quantity}&price={price}&timeInForce=GTC&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -142,14 +138,29 @@ def place_limit_sell_order(symbol, quantity, price):
         print(f"Fehler bei Sell-Limit-Order: {res.text}")
         return None
 
+# --- Hilfsfunktion für quantity-Rundung ---
+
 def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
 
+# --- Hilfsfunktion zur Base Asset Extraktion ---
+
+def get_base_asset_from_symbol(symbol):
+    if "/USDT" in symbol:
+        return symbol.split("/USDT")[0]
+    elif symbol.endswith("USDT"):
+        return symbol[:-4]
+    else:
+        # fallback
+        return symbol.replace("/", "")
+
+# --- Neue Funktion: Trades (Fills) zu einer Order holen ---
+
 def get_order_fills(symbol, order_id):
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    query = f"symbol={symbol.replace('/', '')}&orderId={order_id}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -190,6 +201,8 @@ def webhook():
     if not symbol:
         return jsonify({"error": "symbol fehlt"}), 400
 
+    print(f"Webhook erhalten: symbol={symbol}, action={action}, usdt_amount={usdt_amount}")
+
     exchange_info = get_exchange_info()
     symbol_info = get_symbol_info(symbol, exchange_info)
     if not symbol_info:
@@ -203,11 +216,16 @@ def webhook():
     if price == 0:
         return jsonify({"error": "Preis nicht verfügbar"}), 400
 
-    base_asset = symbol_info.get("baseAsset", symbol.replace("USDT", ""))
+    base_asset = get_base_asset_from_symbol(symbol)
+    print(f"Base Asset ermittelt: {base_asset}")
 
-    # Vor dem Buy: Nur löschen, wenn KEINE offene Position
-    if action == "BUY" and not has_open_position(symbol, exchange_info):
-        firebase_loesche_kaufpreise(base_asset)
+    # Lösche Kaufpreise **vor** dem BUY, wenn keine offene Position
+    if action == "BUY":
+        if not has_open_position(symbol):
+            print(f"Keine offene Position für {base_asset}, lösche Kaufpreise in Firebase")
+            firebase_loesche_kaufpreise(base_asset)
+        else:
+            print(f"Offene Position für {base_asset} vorhanden - keine Löschung")
 
     if action == "BUY":
         if not usdt_amount:
@@ -220,8 +238,9 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig"}), 400
 
+    # Kauf-Order senden (MARKET)
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -236,7 +255,9 @@ def webhook():
 
     order_data = response.json()
     order_id = order_data.get("orderId")
+    print(f"Order erfolgreich: ID={order_id}")
 
+    # Warte 1 Sekunde, um sicherzugehen, dass Trades registriert sind
     time.sleep(1)
 
     fills = get_order_fills(symbol, order_id)
@@ -249,11 +270,14 @@ def webhook():
         price_precision = get_price_precision(filters)
         executed_price_float = round(executed_price, price_precision)
 
+    # Kaufpreis in Firebase speichern
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
+    # Offene Sell-Orders löschen (optional, falls genutzt)
     delete_open_sell_orders(symbol)
 
+    # Limit Sell Order, falls konfiguriert
     if limit_sell_percent:
         limit_sell_price = round(executed_price_float * (1 + limit_sell_percent / 100), get_price_precision(filters))
         balance = get_balance(base_asset)
