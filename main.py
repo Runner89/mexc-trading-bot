@@ -1,12 +1,10 @@
 import os
 import time
-import hmac
-import hashlib
 import requests
 import threading
 from flask import Flask, request, jsonify
 from datetime import datetime
-import random
+import random  # für Zufallszahlen im simulierten Kaufpreis
 
 app = Flask(__name__)
 
@@ -22,9 +20,9 @@ def firebase_loesche_kaufpreise(asset):
     else:
         print(f"Firebase: Fehler beim Löschen der Kaufpreise für {asset}: {response.text}")
 
-def firebase_speichere_kaufpreis(asset, price, quantity=None):
+def firebase_speichere_kaufpreis(asset, price):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
-    data = {"price": price}  # Nur der Preis wird gespeichert
+    data = {"price": price}
     response = requests.post(url, json=data)
     if response.status_code == 200:
         print(f"Firebase: Kaufpreis gespeichert: Asset={asset}, Price={price}")
@@ -36,22 +34,18 @@ def firebase_get_kaufpreise(asset):
     response = requests.get(url)
     if response.status_code == 200 and response.json():
         data = response.json()
-        kaufpreise_mengen = [(float(v["price"]), float(v["quantity"])) for v in data.values()]
-        print(f"Firebase: Lade Kaufpreise für {asset}: {kaufpreise_mengen}")
-        return kaufpreise_mengen
+        kaufpreise = [float(v["price"]) for v in data.values()]
+        print(f"Firebase: Lade Kaufpreise für {asset}: {kaufpreise}")
+        return kaufpreise
     else:
         print(f"Firebase: Keine Kaufpreise für {asset} gefunden oder Fehler")
         return []
 
 # --------- Hilfsfunktionen ---------
-def berechne_durchschnittspreis(kaufpreise_mengen):
-    if not kaufpreise_mengen:
+def berechne_durchschnittspreis(kaufpreise):
+    if not kaufpreise:
         return 0
-    gesamtmenge = sum(qty for _, qty in kaufpreise_mengen)
-    if gesamtmenge == 0:
-        return 0
-    gewichteter_preis = sum(price * qty for price, qty in kaufpreise_mengen)
-    return gewichteter_preis / gesamtmenge
+    return sum(kaufpreise) / len(kaufpreise)
 
 def get_exchange_info():
     url = f"{BASE_URL}/api/v3/exchangeInfo"
@@ -90,18 +84,23 @@ def get_balance(asset):
 
 # --------- Simulierte Orderfunktion (kein Echtauftrag!) ---------
 def place_order(symbol, side, order_type, quantity=None, price=None):
-    # Fiktiver Kaufpreis als Zufallswert zwischen 0.002 und 0.007 bei BUY
-    if side == "BUY":
-        price = round(random.uniform(0.002, 0.007), 6)
     print(f"Order simuliert: {side} {quantity} {symbol} @ {price if price else 'MARKET'}")
+
+    # Simulierter Kaufpreis als Zufallswert zwischen 0.002 und 0.007 (für BUY)
+    if side == "BUY":
+        fake_price = round(random.uniform(0.002, 0.007), 6)
+    else:
+        fake_price = price if price else 1
+
     fake_response = {
         "orderId": 123456,
         "symbol": symbol,
         "side": side,
         "type": order_type,
-        "price": str(price) if price else "",
+        "price": str(fake_price) if fake_price else "",
+        # "origQty" weglassen wie gewünscht
         "status": "FILLED",
-        "fills": [{"price": str(price if price else 1), "qty": str(quantity)}],
+        "fills": [{"price": str(fake_price), "qty": str(quantity)}] if quantity else [],
         "transactTime": int(time.time() * 1000)
     }
     return fake_response, 200
@@ -112,14 +111,13 @@ def cancel_open_limit_sell(symbol):
 
 # --------- Hintergrundprozess für Firebase und Limit-Sell ---------
 def hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size):
-    kaufpreise_mengen = firebase_get_kaufpreise(base_asset)
-    durchschnittspreis = berechne_durchschnittspreis(kaufpreise_mengen)
+    kaufpreise = firebase_get_kaufpreise(base_asset)
+    durchschnittspreis = berechne_durchschnittspreis(kaufpreise)
     if durchschnittspreis == 0:
         print("Kein Durchschnittspreis verfügbar, Limit-Sell übersprungen")
         return
 
     limit_sell_price = round(durchschnittspreis * (1 + limit_sell_percent / 100), 8)
-
     print(f"Setze Limit-Sell-Order bei {limit_sell_price} für {symbol}")
 
     cancel_open_limit_sell(symbol)
@@ -182,25 +180,20 @@ def webhook():
         fills = buy_order.get("fills", [])
         if fills:
             avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
-            filled_qty = sum(float(f["qty"]) for f in fills)
         else:
             avg_price = price
-            filled_qty = quantity
 
+        # Speicher- und Limit-Sell-Task im Hintergrund
         def speicher_und_sell():
-            firebase_speichere_kaufpreis(base_asset, avg_price, filled_qty)
+            firebase_speichere_kaufpreis(base_asset, avg_price)
             hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size)
 
         threading.Thread(target=speicher_und_sell).start()
 
-        # Gesamt-Durchschnitt aller Kaufpreise holen und zurückgeben
-        alle_kaufpreise = firebase_get_kaufpreise(base_asset)
-        durchschnittspreis_total = berechne_durchschnittspreis(alle_kaufpreise)
-
         response_time = (time.time() - start_time) * 1000
         buy_order["responseTime"] = f"{response_time:.2f} ms"
         buy_order["transactTimeReadable"] = datetime.fromtimestamp(buy_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        buy_order["avg_price_total"] = round(durchschnittspreis_total, 8)
+        buy_order["averagePrice"] = avg_price  # Durchschnittspreis als Feedback hinzufügen
 
         return jsonify(buy_order), 200
 
@@ -220,5 +213,5 @@ def webhook():
         return jsonify({"error": "Unbekannte Aktion"}), 400
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Port von Render wird automatisch über Umgebungsvariable gesetzt
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
