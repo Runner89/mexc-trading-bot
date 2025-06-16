@@ -194,7 +194,8 @@ def webhook():
         response_time = (time.time() - start_time) * 1000
         buy_order["responseTime"] = f"{response_time:.2f} ms"
         buy_order["transactTimeReadable"] = datetime.fromtimestamp(buy_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-
+        buy_order["avgPrice"] = round(avg_price, 8)
+        
         return jsonify(buy_order), 200
 
     elif action == "SELL":
