@@ -6,6 +6,7 @@ import requests
 import threading
 from flask import Flask, request, jsonify
 from datetime import datetime
+import random
 
 app = Flask(__name__)
 
@@ -89,10 +90,10 @@ def get_balance(asset):
 
 # --------- Simulierte Orderfunktion (kein Echtauftrag!) ---------
 def place_order(symbol, side, order_type, quantity=None, price=None):
+    # Fiktiver Kaufpreis als Zufallswert zwischen 0.002 und 0.007 bei BUY
+    if side == "BUY":
+        price = round(random.uniform(0.002, 0.007), 6)
     print(f"Order simuliert: {side} {quantity} {symbol} @ {price if price else 'MARKET'}")
-
-    fill_price = price if price else round(0.9 + 0.2 * random.random(), 4)  # Simulierter realistischer Preis z. B. 0.92
-
     fake_response = {
         "orderId": 123456,
         "symbol": symbol,
@@ -101,7 +102,7 @@ def place_order(symbol, side, order_type, quantity=None, price=None):
         "price": str(price) if price else "",
         "origQty": str(quantity),
         "status": "FILLED",
-        "fills": [{"price": str(fill_price), "qty": str(quantity)}],
+        "fills": [{"price": str(price if price else 1), "qty": str(quantity)}],
         "transactTime": int(time.time() * 1000)
     }
     return fake_response, 200
@@ -187,18 +188,21 @@ def webhook():
             avg_price = price
             filled_qty = quantity
 
-        # Speicher- und Limit-Sell-Task im Hintergrund
         def speicher_und_sell():
             firebase_speichere_kaufpreis(base_asset, avg_price, filled_qty)
             hintergrund_verkauf(symbol, base_asset, limit_sell_percent, step_size)
 
         threading.Thread(target=speicher_und_sell).start()
 
+        # Gesamt-Durchschnitt aller Kaufpreise holen und zurückgeben
+        alle_kaufpreise = firebase_get_kaufpreise(base_asset)
+        durchschnittspreis_total = berechne_durchschnittspreis(alle_kaufpreise)
+
         response_time = (time.time() - start_time) * 1000
         buy_order["responseTime"] = f"{response_time:.2f} ms"
         buy_order["transactTimeReadable"] = datetime.fromtimestamp(buy_order.get("transactTime", 0) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        buy_order["avgPrice"] = round(avg_price, 8)
-        
+        buy_order["avg_price_total"] = round(durchschnittspreis_total, 8)
+
         return jsonify(buy_order), 200
 
     elif action == "SELL":
