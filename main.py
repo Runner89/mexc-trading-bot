@@ -30,7 +30,6 @@ def firebase_hole_kaufpreise(asset):
     if response.status_code == 200 and response.content:
         data = response.json()
         if data:
-            # data ist dict mit zufälligen IDs als keys, values sind dicts mit "price"
             return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
     return []
 
@@ -63,6 +62,27 @@ def has_open_position(symbol, threshold=0.0001):
     balance = wait_for_balance(base_asset, retries=5, delay=1)
     offene_position = balance > threshold
     return offene_position, base_asset, balance
+
+def has_open_sell_limit_order(symbol):
+    timestamp = int(time.time() * 1000)
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    base_symbol = symbol.replace("/", "")
+    query = f"symbol={base_symbol}&timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print(f"Fehler beim Abrufen offener Orders: {res.text}")
+        return False
+
+    orders = res.json()
+    for order in orders:
+        if order["side"] == "SELL" and order["type"] == "LIMIT":
+            return True
+    return False
 
 def get_exchange_info():
     url = "https://api.mexc.com/api/v3/exchangeInfo"
@@ -135,7 +155,6 @@ def calculate_average_fill_price(fills):
         return 0
     return total_cost / total_quantity
 
-
 def delete_open_limit_sell_orders(symbol):
     timestamp = int(time.time() * 1000)
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -170,7 +189,6 @@ def create_limit_sell_order(symbol, quantity, price):
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     base_symbol = symbol.replace("/", "")
-    # type=LIMIT, timeInForce=GTC (Good-Til-Cancelled)
     query = f"symbol={base_symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity={quantity}&price={price}&timestamp={timestamp}"
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
@@ -183,6 +201,7 @@ def create_limit_sell_order(symbol, quantity, price):
     else:
         print(f"Fehler beim Erstellen der Limit Sell Order: {res.text}")
         return None
+
 def wait_for_balance(asset, retries=5, delay=1):
     for i in range(retries):
         balance = get_balance(asset)
@@ -228,8 +247,8 @@ def webhook():
         "preis": price,
     }
 
-    # Firebase nur löschen, wenn keine offene Position
-    if not offene_position:
+    # Firebase nur löschen, wenn keine offene Sell-Limit-Order besteht
+    if not has_open_sell_limit_order(symbol):
         firebase_loesche_kaufpreise(base_asset)
         debug_info["firebase_loeschen"] = True
     else:
