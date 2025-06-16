@@ -134,6 +134,56 @@ def calculate_average_fill_price(fills):
         return 0
     return total_cost / total_quantity
 
+
+def delete_open_limit_sell_orders(symbol):
+    timestamp = int(time.time() * 1000)
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    base_symbol = symbol.replace("/", "")
+    query = f"symbol={base_symbol}&timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print(f"Fehler beim Abrufen offener Orders: {res.text}")
+        return False
+
+    orders = res.json()
+    for order in orders:
+        if order["side"] == "SELL" and order["type"] == "LIMIT":
+            order_id = order["orderId"]
+            del_query = f"symbol={base_symbol}&orderId={order_id}&timestamp={int(time.time() * 1000)}"
+            del_signature = hmac.new(secret.encode(), del_query.encode(), hashlib.sha256).hexdigest()
+            del_url = f"https://api.mexc.com/api/v3/order?{del_query}&signature={del_signature}"
+            del_res = requests.delete(del_url, headers=headers)
+            if del_res.status_code == 200:
+                print(f"Limit Sell Order {order_id} gelöscht")
+            else:
+                print(f"Fehler beim Löschen der Order {order_id}: {del_res.text}")
+    return True
+
+def create_limit_sell_order(symbol, quantity, price):
+    timestamp = int(time.time() * 1000)
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    base_symbol = symbol.replace("/", "")
+    # type=LIMIT, timeInForce=GTC (Good-Til-Cancelled)
+    query = f"symbol={base_symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity={quantity}&price={price}&timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.post(url, headers=headers)
+    if res.status_code == 200:
+        print(f"Neue Limit Sell Order erstellt zum Preis {price}")
+        return res.json()
+    else:
+        print(f"Fehler beim Erstellen der Limit Sell Order: {res.text}")
+        return None
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     start_time = time.time()
@@ -229,6 +279,16 @@ def webhook():
 
     timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
+    # Alle bestehenden Limit Sell Orders löschen
+    delete_open_limit_sell_orders(symbol)
+
+    # Neue Limit Sell Order mit durchschnittlichem Kaufpreis setzen (wenn Menge > 0)
+    if quantity > 0 and durchschnittlicher_kaufpreis > 0:
+    
+    # Rundung für Preis anpassen, z.B. 8 Dezimalstellen
+    price_rounded = round(durchschnittlicher_kaufpreis, get_price_precision(filters))
+    create_limit_sell_order(symbol, quantity, price_rounded)
+    
     result = {
         "symbol": symbol,
         "side": action,
