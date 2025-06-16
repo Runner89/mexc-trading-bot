@@ -144,19 +144,35 @@ def adjust_quantity(quantity, step_size):
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
 
-# --- Neue Funktion zur Berechnung des gewichteten Durchschnittspreises aus fills ---
+# --- Neue Funktion: Trades (Fills) zu einer Order holen ---
+
+def get_order_fills(symbol, order_id):
+    timestamp = int(time.time() * 1000)
+    query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code == 200:
+        return res.json()
+    else:
+        print(f"Fehler beim Abrufen der Trades: {res.text}")
+        return []
 
 def calculate_average_fill_price(fills):
-    total_qty = 0
-    total_amount = 0
+    total_quantity = 0
+    total_cost = 0
     for fill in fills:
         price = float(fill["price"])
         qty = float(fill["qty"])
-        total_qty += qty
-        total_amount += price * qty
-    if total_qty == 0:
+        total_cost += price * qty
+        total_quantity += qty
+    if total_quantity == 0:
         return 0
-    return total_amount / total_qty
+    return total_cost / total_quantity
 
 # --- Webhook ---
 
@@ -219,42 +235,50 @@ def webhook():
         return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json()}), 400
 
     order_data = response.json()
-    fills = order_data.get("fills", [])
+    order_id = order_data.get("orderId")
+
+    # Warte 1 Sekunde, um sicherzugehen, dass Trades registriert sind
+    time.sleep(1)
+
+    fills = get_order_fills(symbol, order_id)
 
     if fills:
         executed_price_float = calculate_average_fill_price(fills)
     else:
-        # Warnung statt direkten fallback, damit man weiß, dass Daten fehlen
-        print("Warnung: Keine fills in Order-Response, gespeicherter Preis könnte ungenau sein.")
+        print("Warnung: Keine fills für die Order gefunden, Fallback auf Orderpreis")
         executed_price = float(order_data.get("price", price))
         price_precision = get_price_precision(filters)
         executed_price_float = round(executed_price, price_precision)
 
-        # Kaufspeichern in Firebase (nur bei Kauf)
+    # Kaufpreis in Firebase speichern
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
-    # Durchschnittspreis berechnen
-    preise = firebase_get_kaufpreise(base_asset)
-    average_price = berechne_durchschnittspreis(preise)
+    # Offene Sell-Orders löschen
+    delete_open_sell_orders(symbol)
 
-    # Sell-Limit Order nur, wenn limit_sell_percent angegeben ist
-    if limit_sell_percent is not None:
-        # Vorher alle offenen Sell-Limit-Orders löschen
-        delete_open_sell_orders(symbol)
+    # Limit Sell Order, falls konfiguriert
+    if limit_sell_percent:
+        limit_sell_price = round(executed_price_float * (1 + limit_sell_percent / 100), get_price_precision(filters))
+        balance = get_balance(base_asset)
+        quantity_to_sell = adjust_quantity(balance, step_size)
+        if quantity_to_sell > 0:
+            sell_order = place_limit_sell_order(symbol, quantity_to_sell, limit_sell_price)
+            if sell_order:
+                print(f"Limit-Sell-Order platziert bei {limit_sell_price} für {quantity_to_sell} {base_asset}")
 
-        limit_price = average_price * (1 + (float(limit_sell_percent) / 100))
-        limit_price = round(limit_price, price_precision)
+    timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
-        if quantity > 0 and limit_price > 0:
-            place_limit_sell_order(symbol, quantity, limit_price)
+    result = {
+        "symbol": symbol,
+        "side": action,
+        "price": executed_price_float,
+        "quantity": quantity,
+        "timestamp": timestamp_berlin,
+        "duration_ms": round(response_time, 2),
+    }
 
-    return jsonify({
-        "message": "Order erfolgreich ausgeführt",
-        "executed_price": executed_price_float,
-        "average_price": average_price,
-        "response_time_ms": response_time
-    })
+    return jsonify(result), 200
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(port=8080, debug=True)
