@@ -22,12 +22,12 @@ def firebase_loesche_kaufpreise(asset):
     else:
         print(f"Firebase: Fehler beim Löschen der Kaufpreise für {asset}: {response.text}")
 
-def firebase_speichere_kaufpreis(asset, price, quantity):
+def firebase_speichere_kaufpreis(asset, price, quantity=None):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
-    data = {"price": price, "quantity": quantity}
+    data = {"price": price}  # Nur der Preis wird gespeichert
     response = requests.post(url, json=data)
     if response.status_code == 200:
-        print(f"Firebase: Kaufpreis gespeichert: Asset={asset}, Price={price}, Quantity={quantity}")
+        print(f"Firebase: Kaufpreis gespeichert: Asset={asset}, Price={price}")
     else:
         print(f"Firebase: Fehler beim Speichern: {response.text}")
 
@@ -100,7 +100,6 @@ def place_order(symbol, side, order_type, quantity=None, price=None):
         "side": side,
         "type": order_type,
         "price": str(price) if price else "",
-        "origQty": str(quantity),
         "status": "FILLED",
         "fills": [{"price": str(price if price else 1), "qty": str(quantity)}],
         "transactTime": int(time.time() * 1000)
