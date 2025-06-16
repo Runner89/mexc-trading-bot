@@ -178,31 +178,6 @@ def has_open_sell_limit_order(symbol):
         if order["side"] == "SELL" and order["type"] == "LIMIT":
             return True
     return False
-    
-def get_usdt_balance():
-    timestamp = int(time.time() * 1000)
-    query = f"timestamp={timestamp}"
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
-    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-
-    url = f"https://api.mexc.com/api/v3/account?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print("Fehler beim Abrufen der Kontoinformationen:", response.text)
-        return {"free": 0, "locked": 0, "total": 0}
-
-    balances = response.json().get("balances", [])
-    for asset in balances:
-        if asset["asset"] == "USDT":
-            free = float(asset["free"])
-            locked = float(asset["locked"])
-            total = free + locked
-            return {"free": free, "locked": locked, "total": total}
-
-    return {"free": 0, "locked": 0, "total": 0}
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -329,9 +304,6 @@ def webhook():
         "debug": debug_info,
         "limit_sell_price": limit_sell_price,
         "price_rounded": price_rounded,
-        "limit_sell_price": limit_sell_price,
-        "price_rounded": price_rounded,
-        "usdt_balance": get_usdt_balance()  # ⬅️ Hier hinzugefügt
     }
 
     return jsonify(response_data)
