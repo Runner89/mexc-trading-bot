@@ -9,28 +9,29 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-FIREBASE_URL = "https://test-ecb1c-default-rtdb.europe-west1.firebasedatabase.app"
+# Firebase URL und Secret aus Umgebungsvariablen
+FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
+FIREBASE_SECRET = os.environ.get("FIREBASE_SECRET", "")
 
-# --- Firebase Funktionen ---
+# --- Firebase Funktionen mit Secret Auth ---
 
 def firebase_loesche_kaufpreise(asset):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={FIREBASE_SECRET}"
     response = requests.delete(url)
     print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
 
 def firebase_speichere_kaufpreis(asset, price):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={FIREBASE_SECRET}"
     data = {"price": price}
     response = requests.post(url, json=data)
     print(f"Kaufpreis gespeichert für {asset}: {price}")
 
 def firebase_hole_kaufpreise(asset):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={FIREBASE_SECRET}"
     response = requests.get(url)
     if response.status_code == 200 and response.content:
         data = response.json()
         if data:
-            # data ist dict mit zufälligen IDs als keys, values sind dicts mit "price"
             return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
     return []
 
@@ -144,7 +145,6 @@ def create_limit_sell_order(symbol, quantity, price):
     secret = os.environ.get("MEXC_SECRET_KEY", "")
     api_key = os.environ.get("MEXC_API_KEY", "")
     base_symbol = symbol.replace("/", "")
-    # type=LIMIT, timeInForce=GTC (Good-Til-Cancelled)
     query = f"symbol={base_symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity={quantity}&price={price}&timestamp={timestamp}"
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
@@ -229,8 +229,6 @@ def webhook():
             return jsonify({"error": "usdt_amount fehlt für BUY", **debug_info}), 400
         quantity = usdt_amount / price
     else:
-        # Bei SELL: Menge hier aus Firebase oder anderen Quelle holen wäre ideal,
-        # aber hier setzen wir quantity einfach auf 0, weil Balance nicht verwendet wird
         quantity = 0
 
     quantity = adjust_quantity(quantity, step_size)
@@ -291,23 +289,21 @@ def webhook():
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
     else:
-        limit_sell_price = 0  # Falls keine gültige Prozentzahl oder Durchschnittspreis vorhanden ist
+        limit_sell_price = 0
         price_rounded = 0
-    
-    result = {
+
+    response_data = {
         "symbol": symbol,
-        "side": action,
-        "price": executed_price_float,
-        "quantity": quantity,
+        "action": action,
+        "executed_price": executed_price_float,
+        "durchschnittspreis": durchschnittlicher_kaufpreis,
         "timestamp": timestamp_berlin,
-        "duration_ms": round(response_time, 2),
-        "durchschnittlicher_kaufpreis": round(durchschnittlicher_kaufpreis, 8),
-        "limit_sell_order_price": limit_sell_price,  # Hier der berechnete Verkaufspreis
-        "alle_kaufpreise": kaufpreise_liste,
-        **debug_info
+        "debug": debug_info,
+        "limit_sell_price": limit_sell_price,
+        "price_rounded": price_rounded,
     }
 
-    return jsonify(result), 200
+    return jsonify(response_data)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
