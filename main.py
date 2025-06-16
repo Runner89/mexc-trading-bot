@@ -19,10 +19,10 @@ def firebase_loesche_kaufpreise(asset):
     print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
 
 def firebase_speichere_kaufpreis(asset, price):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
-    data = {"price": price}
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"  # das ist ok, wenn du neue Einträge erzeugst
+    data = {"price": price, "timestamp": int(time.time())}
     response = requests.post(url, json=data)
-    print(f"Kaufpreis gespeichert für {asset}: {price}")
+    print(f"Kaufpreis gespeichert für {asset}: {price} (Status {response.status_code})")
 
 def firebase_get_kaufpreise(asset):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
