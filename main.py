@@ -133,36 +133,19 @@ def adjust_quantity(quantity, step_size):
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
 
-# --- Neu: Durchschnittlichen Ausführungspreis aus Trades abfragen ---
-
-def get_avg_fill_price(symbol, order_id):
+# Neue Funktion, um Order-Details mit Fills abzufragen
+def get_order_details(symbol, order_id):
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
     signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
+    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": os.environ.get("MEXC_API_KEY", "")}
     res = requests.get(url, headers=headers)
     if res.status_code != 200:
-        print(f"Fehler beim Abrufen der Trades: {res.text}")
-        return 0
-
-    trades = res.json()
-    if not trades:
-        return 0
-
-    total_qty = 0
-    total_cost = 0
-    for trade in trades:
-        qty = float(trade['qty'])
-        price = float(trade['price'])
-        total_qty += qty
-        total_cost += price * qty
-
-    if total_qty == 0:
-        return 0
-    return total_cost / total_qty
+        print("Fehler beim Abrufen der Orderdetails:", res.text)
+        return None
+    return res.json()
 
 # --- Webhook ---
 
@@ -194,6 +177,7 @@ def webhook():
 
     base_asset = symbol.replace("USDT", "")
 
+    # Prüfen, ob offene Position besteht, wenn nicht, Firebase löschen
     if not has_open_position(symbol):
         firebase_loesche_kaufpreise(base_asset)
 
@@ -225,30 +209,41 @@ def webhook():
 
     order_data = response.json()
 
-    # Jetzt den effektiven durchschnittlichen Ausführungspreis aus den Trades holen
-    executed_price = get_avg_fill_price(symbol, order_data["orderId"])
-    if executed_price == 0:
-        # Fallback auf Rückgabe oder aktuellen Preis
-        executed_price = float(order_data.get("price", price))
+    # Jetzt echte Order-Details abfragen, um den Ausführungspreis zu erhalten
+    order_details = get_order_details(symbol, order_data.get("orderId"))
+    if order_details and "fills" in order_details and len(order_details["fills"]) > 0:
+        total_qty = 0
+        total_cost = 0
+        for fill in order_details["fills"]:
+            qty = float(fill["qty"])
+            fill_price = float(fill["price"])
+            total_qty += qty
+            total_cost += fill_price * qty
+        executed_price = total_cost / total_qty if total_qty > 0 else price
+    else:
+        executed_price = price  # Fallback
 
-    # Auf die richtige Präzision runden (gleiche Anzahl Nachkommastellen wie step_size)
-    precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
-    executed_price = round(executed_price, precision)
-
+    # Kaufspeichern in Firebase (nur bei Kauf)
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price)
 
+    # Durchschnittspreis berechnen
     preise = firebase_get_kaufpreise(base_asset)
     average_price = berechne_durchschnittspreis(preise)
 
+    # Sell-Limit Order nur, wenn limit_sell_percent angegeben ist
     if limit_sell_percent is not None:
+        # Vorher alle offenen Sell-Limit-Orders löschen
         delete_open_sell_orders(symbol)
+
         limit_price = average_price * (1 + (float(limit_sell_percent) / 100))
-        limit_price = round(limit_price, precision)
+        limit_price = round(limit_price, 8)
+
         sell_order = place_limit_sell_order(symbol, quantity, limit_price)
     else:
         sell_order = None
 
+    # Formatierte Antwort zurückgeben
     order_data["responseTime"] = f"{response_time:.2f} ms"
     if "transactTime" in order_data:
         utc_dt = datetime.utcfromtimestamp(order_data["transactTime"] / 1000)
@@ -258,6 +253,7 @@ def webhook():
     result = {
         "order": order_data,
         "sell_limit_order": sell_order,
+        "executed_price": executed_price
     }
     return jsonify(result), 200
 
