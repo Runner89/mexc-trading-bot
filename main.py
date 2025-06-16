@@ -222,17 +222,15 @@ def webhook():
     fills = order_data.get("fills", [])
 
     if fills:
-        executed_price = calculate_average_fill_price(fills)
+        executed_price_float = calculate_average_fill_price(fills)
     else:
-        # Fallback falls fills nicht vorhanden ist
+        # Warnung statt direkten fallback, damit man weiß, dass Daten fehlen
+        print("Warnung: Keine fills in Order-Response, gespeicherter Preis könnte ungenau sein.")
         executed_price = float(order_data.get("price", price))
+        price_precision = get_price_precision(filters)
+        executed_price_float = round(executed_price, price_precision)
 
-    # Präzision des Preises holen und Preis entsprechend formatieren
-    price_precision = get_price_precision(filters)
-    executed_price_str = f"{executed_price:.{price_precision}f}"
-    executed_price_float = float(executed_price_str)
-
-    # Kaufspeichern in Firebase (nur bei Kauf)
+        # Kaufspeichern in Firebase (nur bei Kauf)
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
