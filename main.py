@@ -24,6 +24,21 @@ def firebase_speichere_kaufpreis(asset, price):
     response = requests.post(url, json=data)
     print(f"Kaufpreis gespeichert für {asset}: {price}")
 
+def firebase_hole_kaufpreise(asset):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json"
+    response = requests.get(url)
+    if response.status_code == 200 and response.content:
+        data = response.json()
+        if data:
+            # data ist dict mit zufälligen IDs als keys, values sind dicts mit "price"
+            return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
+    return []
+
+def berechne_durchschnitt_preis(preise):
+    if not preise:
+        return 0
+    return sum(preise) / len(preise)
+
 def get_balance(asset):
     timestamp = int(time.time() * 1000)
     params = f"timestamp={timestamp}"
@@ -208,6 +223,10 @@ def webhook():
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
+    # Durchschnittlicher Kaufpreis aus Firebase holen
+    kaufpreise_liste = firebase_hole_kaufpreise(base_asset)
+    durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
+
     timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
     result = {
@@ -217,6 +236,7 @@ def webhook():
         "quantity": quantity,
         "timestamp": timestamp_berlin,
         "duration_ms": round(response_time, 2),
+        "durchschnittlicher_kaufpreis": round(durchschnittlicher_kaufpreis, 8),
         **debug_info
     }
 
