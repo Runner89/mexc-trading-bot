@@ -144,35 +144,19 @@ def adjust_quantity(quantity, step_size):
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
 
-# --- Neue Funktion: Trades (Fills) zu einer Order holen ---
-
-def get_order_fills(symbol, order_id):
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
-    secret = os.environ.get("MEXC_SECRET_KEY", "")
-    api_key = os.environ.get("MEXC_API_KEY", "")
-    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        print(f"Fehler beim Abrufen der Trades: {res.text}")
-        return []
+# --- Hilfsfunktion zum Berechnen des gewichteten Durchschnittspreises aus fills ---
 
 def calculate_average_fill_price(fills):
-    total_quantity = 0
+    total_qty = 0
     total_cost = 0
     for fill in fills:
-        price = float(fill["price"])
-        qty = float(fill["qty"])
+        qty = float(fill.get("qty", 0))
+        price = float(fill.get("price", 0))
+        total_qty += qty
         total_cost += price * qty
-        total_quantity += qty
-    if total_quantity == 0:
-        return 0
-    return total_cost / total_quantity
+    if total_qty == 0:
+        return 0.0
+    return total_cost / total_qty
 
 # --- Webhook ---
 
@@ -204,10 +188,12 @@ def webhook():
 
     base_asset = symbol.replace("USDT", "")
 
-    # Prüfen, ob offene Position besteht, wenn nicht, Firebase löschen
-    if not has_open_position(symbol):
-        firebase_loesche_kaufpreise(base_asset)
+    # Kaufpreise nur löschen, wenn **keine offene Position** besteht
+    if action == "BUY":
+        if not has_open_position(symbol):
+            firebase_loesche_kaufpreise(base_asset)
 
+    # Menge berechnen
     if action == "BUY":
         if not usdt_amount:
             return jsonify({"error": "usdt_amount fehlt für BUY"}), 400
@@ -232,53 +218,55 @@ def webhook():
     response_time = (time.time() - start_time) * 1000
 
     if response.status_code != 200:
-        return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json()}), 400
+        return jsonify({"error": "Order fehlgeschlagen", "details": response.json()}), 400
 
     order_data = response.json()
-    order_id = order_data.get("orderId")
 
-    # Warte 1 Sekunde, um sicherzugehen, dass Trades registriert sind
-    time.sleep(1)
-
-    fills = get_order_fills(symbol, order_id)
-
+    # Durchschnittlichen Ausführungspreis aus fills berechnen
+    fills = order_data.get("fills", [])
     if fills:
         executed_price_float = calculate_average_fill_price(fills)
     else:
-        print("Warnung: Keine fills für die Order gefunden, Fallback auf Orderpreis")
-        executed_price = float(order_data.get("price", price))
+        # Falls fills fehlen, fallback mit "price" aus Order-Daten (weniger genau)
+        fallback_price = float(order_data.get("price", price))
         price_precision = get_price_precision(filters)
-        executed_price_float = round(executed_price, price_precision)
+        executed_price_float = round(fallback_price, price_precision)
+        print("Warnung: Keine fills in Order-Response, Preis evtl. ungenau.")
 
-    # Kaufpreis in Firebase speichern
+    # Kaufpreis in Firebase speichern (nur bei Buy)
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float)
 
-    # Offene Sell-Orders löschen
+    # Durchschnittspreis berechnen aus Firebase-Daten
+    preise = firebase_get_kaufpreise(base_asset)
+    average_price = berechne_durchschnittspreis(preise)
+
+    # Offene Sell-Limit-Orders löschen (immer)
     delete_open_sell_orders(symbol)
 
-    # Limit Sell Order, falls konfiguriert
-    if limit_sell_percent:
-        limit_sell_price = round(executed_price_float * (1 + limit_sell_percent / 100), get_price_precision(filters))
+    # Limit Sell Order nur, wenn limit_sell_percent angegeben
+    if limit_sell_percent is not None:
+        limit_price = average_price * (1 + (float(limit_sell_percent) / 100))
+        price_precision = get_price_precision(filters)
+        limit_price = round(limit_price, price_precision)
+
         balance = get_balance(base_asset)
         quantity_to_sell = adjust_quantity(balance, step_size)
-        if quantity_to_sell > 0:
-            sell_order = place_limit_sell_order(symbol, quantity_to_sell, limit_sell_price)
-            if sell_order:
-                print(f"Limit-Sell-Order platziert bei {limit_sell_price} für {quantity_to_sell} {base_asset}")
+        if quantity_to_sell > 0 and limit_price > 0:
+            place_limit_sell_order(symbol, quantity_to_sell, limit_price)
 
     timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
-    result = {
+    return jsonify({
+        "message": "Order erfolgreich ausgeführt",
+        "executed_price": executed_price_float,
+        "average_price": average_price,
+        "response_time_ms": response_time,
+        "timestamp": timestamp_berlin,
         "symbol": symbol,
         "side": action,
-        "price": executed_price_float,
-        "quantity": quantity,
-        "timestamp": timestamp_berlin,
-        "duration_ms": round(response_time, 2),
-    }
-
-    return jsonify(result), 200
+        "quantity": quantity
+    })
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
