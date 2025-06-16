@@ -92,10 +92,15 @@ def get_balance(asset):
             return float(item.get("free", 0))
     return 0
 
-def has_open_position(symbol):
-    base_asset = symbol.replace("USDT", "")
+def has_open_position(symbol, exchange_info):
+    symbol_info = get_symbol_info(symbol, exchange_info)
+    if not symbol_info:
+        print(f"Symbolinfo für {symbol} nicht gefunden.")
+        return False
+    base_asset = symbol_info.get("baseAsset", "")
     balance = get_balance(base_asset)
-    return balance > 0
+    print(f"[has_open_position] Balance von {base_asset}: {balance}")
+    return balance > 0.0001
 
 def delete_open_sell_orders(symbol):
     timestamp = int(time.time() * 1000)
@@ -198,13 +203,11 @@ def webhook():
     if price == 0:
         return jsonify({"error": "Preis nicht verfügbar"}), 400
 
-    base_asset = symbol.replace("USDT", "")
+    base_asset = symbol_info.get("baseAsset", symbol.replace("USDT", ""))
 
-    # Nur bei einem Kauf prüfen, ob Position leer ist → dann Firebase löschen
-    if action == "BUY":
-        if not has_open_position(symbol):
-            firebase_loesche_kaufpreise(base_asset)
-            print(f"Keine offene Position in {base_asset}, Firebase-Kaufpreise gelöscht.")
+    # Vor dem Buy: Nur löschen, wenn KEINE offene Position
+    if action == "BUY" and not has_open_position(symbol, exchange_info):
+        firebase_loesche_kaufpreise(base_asset)
 
     if action == "BUY":
         if not usdt_amount:
@@ -235,6 +238,7 @@ def webhook():
     order_id = order_data.get("orderId")
 
     time.sleep(1)
+
     fills = get_order_fills(symbol, order_id)
 
     if fills:
