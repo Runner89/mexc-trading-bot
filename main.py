@@ -90,6 +90,9 @@ def get_balance(asset):
 # --------- Simulierte Orderfunktion (kein Echtauftrag!) ---------
 def place_order(symbol, side, order_type, quantity=None, price=None):
     print(f"Order simuliert: {side} {quantity} {symbol} @ {price if price else 'MARKET'}")
+
+    fill_price = price if price else round(0.9 + 0.2 * random.random(), 4)  # Simulierter realistischer Preis z. B. 0.92
+
     fake_response = {
         "orderId": 123456,
         "symbol": symbol,
@@ -98,7 +101,7 @@ def place_order(symbol, side, order_type, quantity=None, price=None):
         "price": str(price) if price else "",
         "origQty": str(quantity),
         "status": "FILLED",
-        "fills": [{"price": str(price if price else 1), "qty": str(quantity)}],
+        "fills": [{"price": str(fill_price), "qty": str(quantity)}],
         "transactTime": int(time.time() * 1000)
     }
     return fake_response, 200
