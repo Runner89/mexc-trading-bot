@@ -341,7 +341,7 @@ def webhook():
 
     # Berechnung des Verkaufspreises basierend auf dem Durchschnittspreis + Prozentsatz
     if limit_sell_percent is not None and durchschnittlicher_kaufpreis > 0:
-        limit_sell_price = durchschnittlicher Kaufpreis * (1 + limit_sell_percent / 100)
+        limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
     else:
         limit_sell_price = 0
