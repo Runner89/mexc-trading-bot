@@ -46,6 +46,18 @@ def firebase_loesche_ordergroesse(asset):
     response = requests.delete(url)
     print(f"Ordergröße gelöscht für {asset}: {response.status_code}")
 
+def firebase_hole_ordergroesse(asset):
+    url = f"{FIREBASE_URL}/ordergroesse/{asset}.json?auth={FIREBASE_SECRET}"
+    response = requests.get(url)
+    if response.status_code == 200 and response.content:
+        data = response.json()
+        if data:
+            # Letzten Eintrag verwenden
+            last_entry = list(data.values())[-1]
+            return float(last_entry.get("size", 0))
+    return None
+
+
 def hole_free_balance(asset):
     timestamp = int(time.time() * 1000)
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -278,10 +290,14 @@ def webhook():
             quantity = order_groesse / price
         else:
             if not usdt_amount:
-                return jsonify({"error": "usdt_amount fehlt für BUY", **debug_info}), 400
-            quantity = usdt_amount / price
-    else:
-        quantity = 0
+                # Fallback: order_groesse aus Firebase holen
+                order_groesse = firebase_hole_ordergroesse(base_asset)
+                debug_info["order_groesse_firebase"] = order_groesse
+                if not order_groesse or order_groesse <= 0:
+                    return jsonify({"error": "usdt_amount fehlt und keine gespeicherte Ordergröße gefunden", **debug_info}), 400
+                quantity = order_groesse / price
+            else:
+                quantity = usdt_amount / price
 
 
     quantity = adjust_quantity(quantity, step_size)
