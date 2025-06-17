@@ -179,11 +179,32 @@ def has_open_sell_limit_order(symbol):
             return True
     return False
 
+# NEU: Funktion zum Abrufen der freien Balance
+def get_free_balance(asset):
+    timestamp = int(time.time() * 1000)
+    secret = os.environ.get("MEXC_SECRET_KEY", "")
+    api_key = os.environ.get("MEXC_API_KEY", "")
+    query = f"timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/account?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print(f"Fehler beim Abrufen der Balance: {res.text}")
+        return None
+
+    data = res.json()
+    for balance in data.get("balances", []):
+        if balance["asset"] == asset:
+            return float(balance.get("free", 0))
+    return 0
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     start_time = time.time()
     data = request.get_json()
-
+    
     symbol = data.get("symbol")
     action = data.get("side", "BUY").upper()
     limit_sell_percent = data.get("limit_sell_percent", None)
@@ -197,6 +218,9 @@ def webhook():
     if not symbol_info:
         return jsonify({"error": "Symbol nicht gefunden"}), 400
 
+    # Freie USDT-Balance hinzufügen
+    usdt_balance = get_free_balance("USDT")
+
     filters = symbol_info.get("filters", [])
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
     step_size = get_step_size(filters, baseSizePrecision)
@@ -206,7 +230,6 @@ def webhook():
         return jsonify({"error": "Preis nicht verfügbar"}), 400
 
     base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
-
     offene_position = has_open_sell_limit_order(symbol)
 
     debug_info = {
@@ -217,7 +240,6 @@ def webhook():
         "preis": price,
     }
 
-    # Firebase nur löschen, wenn keine offene Sell-Limit-Order
     if not offene_position:
         firebase_loesche_kaufpreise(base_asset)
         debug_info["firebase_loeschen"] = True
@@ -235,7 +257,6 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
 
-    # Kauf-Order senden (MARKET)
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
     secret = os.environ.get("MEXC_SECRET_KEY", "")
@@ -254,7 +275,6 @@ def webhook():
     order_id = order_data.get("orderId")
 
     time.sleep(1)
-
     fills = get_order_fills(symbol, order_id)
 
     if fills:
@@ -265,28 +285,22 @@ def webhook():
         price_precision = get_price_precision(filters)
         executed_price_float = round(executed_price, price_precision)
 
-    # Kaufpreis in Firebase speichern (nur bei BUY)
     if action == "BUY":
         preis_override = data.get("Preis")
         preis_zum_speichern = float(preis_override) if preis_override else executed_price_float
         firebase_speichere_kaufpreis(base_asset, preis_zum_speichern)
 
-    # Durchschnittlicher Kaufpreis aus Firebase holen
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset)
     durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
 
     timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
-
-    # Alle bestehenden Limit Sell Orders löschen
     delete_open_limit_sell_orders(symbol)
 
-    # Neue Limit Sell Order mit durchschnittlichem Kaufpreis + Prozentaufschlag setzen (wenn Menge > 0)
     if quantity > 0 and durchschnittlicher_kaufpreis > 0 and limit_sell_percent is not None:
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
         create_limit_sell_order(symbol, quantity, price_rounded)
 
-    # Berechnung des Verkaufspreises basierend auf dem Durchschnittspreis + Prozentsatz
     if limit_sell_percent is not None and durchschnittlicher_kaufpreis > 0:
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
@@ -294,16 +308,19 @@ def webhook():
         limit_sell_price = 0
         price_rounded = 0
 
+  
+
     response_data = {
         "symbol": symbol,
         "action": action,
         "executed_price": executed_price_float,
         "durchschnittspreis": durchschnittlicher_kaufpreis,
-        "kaufpreise_alle": kaufpreise_liste,  # <-- Hier alle Preise mit einfügen
+        "kaufpreise_alle": kaufpreise_liste,
         "timestamp": timestamp_berlin,
         "debug": debug_info,
         "limit_sell_price": limit_sell_price,
         "price_rounded": price_rounded,
+        "usdt_balance_free": usdt_balance
     }
 
     return jsonify(response_data)
