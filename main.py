@@ -1,4 +1,3 @@
-import os
 import time
 import hmac
 import hashlib
@@ -9,10 +8,8 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-# Firebase URL bleibt in Umgebungsvariablen
-FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
+FIREBASE_URL = "https://deine-firebase-url.firebaseio.com"  # Hier anpassen
 
-# --- Firebase Funktionen mit Secret Auth (Secret kommt jetzt als Parameter) ---
 
 def firebase_loesche_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
@@ -82,80 +79,11 @@ def adjust_quantity(quantity, step_size):
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
 
-def get_order_fills(symbol, order_id, api_key, secret_key):
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol.replace('/', '')}&orderId={order_id}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        print(f"Fehler beim Abrufen der Trades: {res.text}")
-        return []
-
-def calculate_average_fill_price(fills):
-    total_quantity = 0
-    total_cost = 0
-    for fill in fills:
-        price = float(fill["price"])
-        qty = float(fill["qty"])
-        total_cost += price * qty
-        total_quantity += qty
-    if total_quantity == 0:
-        return 0
-    return total_cost / total_quantity
-
-def delete_open_limit_sell_orders(symbol, api_key, secret_key):
+def has_open_sell_limit_order(symbol, api_key, secret):
     timestamp = int(time.time() * 1000)
     base_symbol = symbol.replace("/", "")
     query = f"symbol={base_symbol}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        print(f"Fehler beim Abrufen offener Orders: {res.text}")
-        return False
-
-    orders = res.json()
-    for order in orders:
-        if order["side"] == "SELL" and order["type"] == "LIMIT":
-            order_id = order["orderId"]
-            del_query = f"symbol={base_symbol}&orderId={order_id}&timestamp={int(time.time() * 1000)}"
-            del_signature = hmac.new(secret_key.encode(), del_query.encode(), hashlib.sha256).hexdigest()
-            del_url = f"https://api.mexc.com/api/v3/order?{del_query}&signature={del_signature}"
-            del_res = requests.delete(del_url, headers=headers)
-            if del_res.status_code == 200:
-                print(f"Limit Sell Order {order_id} gelöscht")
-            else:
-                print(f"Fehler beim Löschen der Order {order_id}: {del_res.text}")
-    return True
-
-def create_limit_sell_order(symbol, quantity, price, api_key, secret_key):
-    timestamp = int(time.time() * 1000)
-    base_symbol = symbol.replace("/", "")
-    query = f"symbol={base_symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity={quantity}&price={price}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    res = requests.post(url, headers=headers)
-    if res.status_code == 200:
-        print(f"Neue Limit Sell Order erstellt zum Preis {price}")
-        return res.json()
-    else:
-        print(f"Fehler beim Erstellen der Limit Sell Order: {res.text}")
-        return None
-
-def has_open_sell_limit_order(symbol, api_key, secret_key):
-    timestamp = int(time.time() * 1000)
-    base_symbol = symbol.replace("/", "")
-    query = f"symbol={base_symbol}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
     headers = {"X-MEXC-APIKEY": api_key}
 
@@ -170,24 +98,68 @@ def has_open_sell_limit_order(symbol, api_key, secret_key):
             return True
     return False
 
+def delete_open_limit_sell_orders(symbol, api_key, secret):
+    timestamp = int(time.time() * 1000)
+    base_symbol = symbol.replace("/", "")
+    query = f"symbol={base_symbol}&timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/openOrders?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        print(f"Fehler beim Abrufen offener Orders: {res.text}")
+        return False
+
+    orders = res.json()
+    for order in orders:
+        if order["side"] == "SELL" and order["type"] == "LIMIT":
+            order_id = order["orderId"]
+            del_query = f"symbol={base_symbol}&orderId={order_id}&timestamp={int(time.time() * 1000)}"
+            del_signature = hmac.new(secret.encode(), del_query.encode(), hashlib.sha256).hexdigest()
+            del_url = f"https://api.mexc.com/api/v3/order?{del_query}&signature={del_signature}"
+            del_res = requests.delete(del_url, headers=headers)
+            if del_res.status_code == 200:
+                print(f"Limit Sell Order {order_id} gelöscht")
+            else:
+                print(f"Fehler beim Löschen der Order {order_id}: {del_res.text}")
+    return True
+
+def create_limit_sell_order(symbol, quantity, price, api_key, secret):
+    timestamp = int(time.time() * 1000)
+    base_symbol = symbol.replace("/", "")
+    query = f"symbol={base_symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity={quantity}&price={price}&timestamp={timestamp}"
+    signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+
+    res = requests.post(url, headers=headers)
+    if res.status_code == 200:
+        print(f"Neue Limit Sell Order erstellt zum Preis {price}")
+        return res.json()
+    else:
+        print(f"Fehler beim Erstellen der Limit Sell Order: {res.text}")
+        return None
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    start_time = time.time()
     data = request.get_json()
+
+    mexc_api_key = data.get("mexc_api_key")
+    mexc_secret = data.get("mexc_secret")
+    firebase_secret = data.get("firebase_secret")
+
+    if not mexc_api_key or not mexc_secret or not firebase_secret:
+        return jsonify({"error": "API Keys fehlen (mexc_api_key, mexc_secret, firebase_secret)"}), 400
 
     symbol = data.get("symbol")
     action = data.get("side", "BUY").upper()
-    limit_sell_percent = data.get("limit_sell_percent", None)
+    limit_sell_percent = data.get("limit_sell_percent")
     usdt_amount = data.get("usdt_amount")
-
-    api_key = data.get("api_key")
-    secret_key = data.get("secret_key")
-    firebase_secret = data.get("firebase_secret")
 
     if not symbol:
         return jsonify({"error": "symbol fehlt"}), 400
-    if not api_key or not secret_key or not firebase_secret:
-        return jsonify({"error": "api_key, secret_key und firebase_secret müssen im JSON enthalten sein"}), 400
 
     exchange_info = get_exchange_info()
     symbol_info = get_symbol_info(symbol, exchange_info)
@@ -197,105 +169,72 @@ def webhook():
     filters = symbol_info.get("filters", [])
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
     step_size = get_step_size(filters, baseSizePrecision)
+    price_precision = get_price_precision(filters)
 
-    price = get_price(symbol)
-    if price == 0:
+    aktueller_preis = get_price(symbol)
+    if aktueller_preis == 0:
         return jsonify({"error": "Preis nicht verfügbar"}), 400
 
-    base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
+    if "/" in symbol:
+        base_asset = symbol.split("/")[0]
+    else:
+        base_asset = symbol.replace("USDT", "")
 
-    offene_position = has_open_sell_limit_order(symbol, api_key, secret_key)
+    offene_position = has_open_sell_limit_order(symbol, mexc_api_key, mexc_secret)
 
-    debug_info = {
-        "base_asset": base_asset,
-        "offene_position": offene_position,
-        "action": action,
-        "step_size": step_size,
-        "preis": price,
-    }
-
-    # Firebase nur löschen, wenn keine offene Sell-Limit-Order
+    # Lösche Kaufpreise nur, wenn keine offene Limit Sell Order
     if not offene_position:
         firebase_loesche_kaufpreise(base_asset, firebase_secret)
-        debug_info["firebase_loeschen"] = True
-    else:
-        debug_info["firebase_loeschen"] = False
 
     if action == "BUY":
         if not usdt_amount:
-            return jsonify({"error": "usdt_amount fehlt für BUY", **debug_info}), 400
-        quantity = usdt_amount / price
+            return jsonify({"error": "usdt_amount fehlt für BUY Aktion"}), 400
+
+        menge = round(float(usdt_amount) / aktueller_preis, 8)  # Menge berechnen
+        menge = adjust_quantity(menge, step_size)
+        if menge <= 0:
+            return jsonify({"error": "Berechnete Menge <= 0"}), 400
+
+        # Kauflogik hier:
+        firebase_speichere_kaufpreis(base_asset, aktueller_preis, firebase_secret)
+
+        return jsonify({
+            "message": f"BUY ausgeführt für {symbol} mit Menge {menge} zum Preis {aktueller_preis}",
+            "offene_position": offene_position,
+            "kaufpreis": aktueller_preis,
+        })
+
+    elif action == "SELL_LIMIT":
+        if not limit_sell_percent:
+            return jsonify({"error": "limit_sell_percent fehlt für SELL_LIMIT Aktion"}), 400
+
+        kaufpreise = firebase_hole_kaufpreise(base_asset, firebase_secret)
+        if not kaufpreise:
+            return jsonify({"error": "Keine Kaufpreise in Firebase gespeichert"}), 400
+
+        avg_kaufpreis = berechne_durchschnitt_preis(kaufpreise)
+        zielpreis = avg_kaufpreis * (1 + float(limit_sell_percent) / 100)
+        zielpreis = round(zielpreis, price_precision)
+
+        if offene_position:
+            delete_open_limit_sell_orders(symbol, mexc_api_key, mexc_secret)
+
+        menge = sum(kaufpreise) / avg_kaufpreis  # Vereinfachung: Menge = Anzahl Kaufpreise
+        menge = adjust_quantity(menge, step_size)
+        if menge <= 0:
+            return jsonify({"error": "Berechnete Menge <= 0 für Verkauf"}), 400
+
+        order = create_limit_sell_order(symbol, menge, zielpreis, mexc_api_key, mexc_secret)
+
+        return jsonify({
+            "message": f"SELL_LIMIT Order erstellt für {symbol} mit Menge {menge} zum Zielpreis {zielpreis}",
+            "order_response": order,
+            "offene_position": offene_position,
+        })
+
     else:
-        quantity = 0
-
-    quantity = adjust_quantity(quantity, step_size)
-    if quantity <= 0:
-        return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
-
-    # Kauf-Order senden (MARKET)
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-
-    response = requests.post(url, headers=headers)
-    response_time = (time.time() - start_time) * 1000
-
-    if response.status_code != 200:
-        return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json(), **debug_info}), 400
-
-    order_data = response.json()
-    order_id = order_data.get("orderId")
-
-    time.sleep(1)
-
-    fills = get_order_fills(symbol, order_id, api_key, secret_key)
-
-    if fills:
-        executed_price_float = calculate_average_fill_price(fills)
-    else:
-        print("Warnung: Keine fills für die Order gefunden, Fallback auf Orderpreis")
-        executed_price = float(order_data.get("price", price))
-        price_precision = get_price_precision(filters)
-        executed_price_float = round(executed_price, price_precision)
-
-    # Kaufpreis in Firebase speichern (nur bei BUY)
-    if action == "BUY":
-        preis_override = data.get("Preis")
-        preis_zum_speichern = float(preis_override) if preis_override else executed_price_float
-        firebase_speichere_kaufpreis(base_asset, preis_zum_speichern, firebase_secret)
-
-    # Durchschnittlicher Kaufpreis aus Firebase holen
-    kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
-    durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
-
-    timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
-
-    # Limit Sell Orders löschen und neu setzen, falls gewünscht
-    if limit_sell_percent is not None and action == "BUY" and durchschnittlicher_kaufpreis > 0:
-        delete_open_limit_sell_orders(symbol, api_key, secret_key)
-        sell_price = round(durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100), get_price_precision(filters))
-        quantity = adjust_quantity(quantity, step_size)
-
-        create_limit_sell_order(symbol, quantity, sell_price, api_key, secret_key)
-    else:
-        sell_price = None
-
-    return jsonify({
-        "symbol": symbol,
-        "action": action,
-        "executed_price": executed_price_float,
-        "durchschnittspreis": durchschnittlicher_kaufpreis,
-        "limit_sell_percent": limit_sell_percent,
-        "limit_sell_price": sell_price,
-        "quantity": quantity,
-        "timestamp_berlin": timestamp_berlin,
-        "firebase_kaufpreise_count": len(kaufpreise_liste),
-        "response_time_ms": round(response_time, 2),
-        **debug_info,
-    })
+        return jsonify({"error": "Unbekannte Aktion"}), 400
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True, port=5000)
