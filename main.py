@@ -8,6 +8,11 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def home():
+    return "Flask läuft! Verwende POST /webhook für Anfragen."
+
+
 FIREBASE_URL = "https://deine-firebase-url.firebaseio.com"  # Hier anpassen
 
 
