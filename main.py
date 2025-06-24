@@ -262,6 +262,14 @@ def webhook():
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
     durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
 
+    if fills:
+        # Nutze den Zeitstempel des ersten Fills (Unix ms → Europe/Berlin)
+        fill_time = int(fills[0]["time"])
+        timestamp_berlin = datetime.fromtimestamp(fill_time / 1000, ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        # Fallback: lokale Serverzeit
+        timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
+    
     timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
     delete_open_limit_sell_orders(symbol, api_key, secret_key)
