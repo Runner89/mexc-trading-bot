@@ -34,6 +34,11 @@ def firebase_hole_kaufpreise(asset, firebase_secret):
             return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
     return []
 
+def firebase_speichere_trade_history(trade_data, firebase_secret):
+    url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
+    response = requests.post(url, json=trade_data)
+    print(f"Trade History gespeichert: {response.status_code}")
+
 def berechne_durchschnitt_preis(preise):
     if not preise:
         return 0
@@ -284,6 +289,20 @@ def webhook():
         "limit_sell_price": limit_sell_price,
         "price_rounded": price_rounded,
     }
+
+    trade_entry = {
+    "symbol": symbol,
+    "action": action,
+    "executed_price": executed_price_float,
+    "durchschnittspreis": durchschnittlicher_kaufpreis,
+    "quantity": quantity,
+    "limit_sell_percent": limit_sell_percent,
+    "limit_sell_price": limit_sell_price,
+    "timestamp": timestamp_berlin,
+    "debug": debug_info,
+    }
+
+    firebase_speichere_trade_history(trade_entry, firebase_secret)
 
     return jsonify(response_data)
 
