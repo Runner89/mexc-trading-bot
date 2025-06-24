@@ -291,6 +291,7 @@ def webhook():
     }
 
     trade_entry = {
+    "timestamp": timestamp_berlin,
     "symbol": symbol,
     "action": action,
     "executed_price": executed_price_float,
@@ -298,8 +299,6 @@ def webhook():
     "quantity": quantity,
     "limit_sell_percent": limit_sell_percent,
     "limit_sell_price": limit_sell_price,
-    "timestamp": timestamp_berlin,
-    "debug": debug_info,
     }
 
     firebase_speichere_trade_history(trade_entry, firebase_secret)
