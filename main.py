@@ -43,6 +43,23 @@ def firebase_speichere_trade_history(trade_data, firebase_secret):
     else:
         print(f"Fehler beim Speichern in History: {response.text}")
 
+def get_asset_balance(asset, api_key, secret_key):
+    timestamp = int(time.time() * 1000)
+    query = f"timestamp={timestamp}"
+    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
+    url = f"https://api.mexc.com/api/v3/account?{query}&signature={signature}"
+    headers = {"X-MEXC-APIKEY": api_key}
+    res = requests.get(url, headers=headers)
+
+    if res.status_code == 200:
+        balances = res.json().get("balances", [])
+        for entry in balances:
+            if entry["asset"] == asset:
+                return float(entry["free"])
+    else:
+        print(f"Fehler beim Abrufen des Saldos: {res.text}")
+    return 0.0
+
 def berechne_durchschnitt_preis(preise):
     if not preise:
         return 0
@@ -278,10 +295,13 @@ def webhook():
 
     delete_open_limit_sell_orders(symbol, api_key, secret_key)
 
-    if quantity > 0 and durchschnittlicher_kaufpreis > 0 and limit_sell_percent is not None:
+    full_quantity = get_asset_balance(base_asset, api_key, secret_key)
+    full_quantity = adjust_quantity(full_quantity, step_size)
+
+    if full_quantity > 0 and durchschnittlicher_kaufpreis > 0 and limit_sell_percent is not None:
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
         price_rounded = round(limit_sell_price, get_price_precision(filters))
-        create_limit_sell_order(symbol, quantity, price_rounded, api_key, secret_key)
+        create_limit_sell_order(symbol, full_quantity, price_rounded, api_key, secret_key)
 
     if limit_sell_percent is not None and durchschnittlicher_kaufpreis > 0:
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
