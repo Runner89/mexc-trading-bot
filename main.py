@@ -9,10 +9,7 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-# Firebase URL kann in der Umgebung bleiben
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
-
-# --- Firebase Funktionen mit Secret Auth ---
 
 def firebase_loesche_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
@@ -33,7 +30,6 @@ def firebase_hole_kaufpreise(asset, firebase_secret):
         if data:
             return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
     return []
-
 
 def firebase_speichere_trade_history(trade_data, firebase_secret):
     url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
@@ -75,12 +71,6 @@ def get_symbol_info(symbol, exchange_info):
         if s["symbol"] == symbol.replace("/", ""):
             return s
     return None
-
-def get_price(symbol):
-    url = f"https://api.mexc.com/api/v3/ticker/price?symbol={symbol.replace('/', '')}"
-    res = requests.get(url)
-    data = res.json()
-    return float(data.get("price", 0))
 
 def get_step_size(filters, baseSizePrecision):
     for f in filters:
@@ -202,8 +192,8 @@ def webhook():
     action = data.get("side", "BUY").upper()
     limit_sell_percent = data.get("limit_sell_percent", None)
     usdt_amount = data.get("usdt_amount")
+    price = float(data.get("price"))
 
-    # Secrets aus JSON extrahieren
     api_key = data.get("MEXC_API_KEY", "")
     secret_key = data.get("MEXC_SECRET_KEY", "")
     firebase_secret = data.get("FIREBASE_SECRET", "")
@@ -219,10 +209,6 @@ def webhook():
     filters = symbol_info.get("filters", [])
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
     step_size = get_step_size(filters, baseSizePrecision)
-
-    price = get_price(symbol)
-    if price == 0:
-        return jsonify({"error": "Preis nicht verfügbar"}), 400
 
     base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
     offene_position = has_open_sell_limit_order(symbol, api_key, secret_key)
@@ -252,7 +238,6 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
 
-    # Marktorder platzieren
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
     signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -267,15 +252,12 @@ def webhook():
     order_id = order_data.get("orderId")
 
     time.sleep(1)
-
     fills = get_order_fills(symbol, order_id, api_key, secret_key)
 
     if fills:
         executed_price_float = calculate_average_fill_price(fills)
     else:
-        executed_price = float(order_data.get("price", price))
-        price_precision = get_price_precision(filters)
-        executed_price_float = round(executed_price, price_precision)
+        executed_price_float = price
 
     if action == "BUY":
         firebase_speichere_kaufpreis(base_asset, executed_price_float, firebase_secret)
@@ -284,14 +266,10 @@ def webhook():
     durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
 
     if fills:
-        # Nutze den Zeitstempel des ersten Fills (Unix ms → Europe/Berlin)
         fill_time = int(fills[0]["time"])
         timestamp_berlin = datetime.fromtimestamp(fill_time / 1000, ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
     else:
-        # Fallback: lokale Serverzeit
         timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
-    
-    timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
     delete_open_limit_sell_orders(symbol, api_key, secret_key)
 
@@ -311,7 +289,7 @@ def webhook():
         price_rounded = 0
 
     usdt_invested = quantity * executed_price_float
-    
+
     response_data = {
         "symbol": symbol,
         "action": action,
@@ -326,18 +304,17 @@ def webhook():
     }
 
     trade_entry = {
-    "timestamp": timestamp_berlin,
-    "symbol": symbol,
-    "action": action,
-    "executed_price": executed_price_float,
-    "durchschnittspreis": durchschnittlicher_kaufpreis,
-    "quantity": quantity,
-    "usdt_invested": round(usdt_invested, 8),
-    "limit_sell_percent": limit_sell_percent,
-    "limit_sell_price": limit_sell_price,
+        "timestamp": timestamp_berlin,
+        "symbol": symbol,
+        "action": action,
+        "executed_price": executed_price_float,
+        "durchschnittspreis": durchschnittlicher_kaufpreis,
+        "quantity": quantity,
+        "usdt_invested": round(usdt_invested, 8),
+        "limit_sell_percent": limit_sell_percent,
+        "limit_sell_price": limit_sell_price,
     }
 
-    # In Firebase History speichern
     firebase_speichere_trade_history(trade_entry, firebase_secret)
 
     return jsonify(response_data)
