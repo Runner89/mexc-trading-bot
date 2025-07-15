@@ -1,5 +1,3 @@
-#USDT Amount wird beim Webhook angegeben, der effektive Kaufpreis von MEXC wird in Firebase eingetragen, daraus wird der Durchschnitt berechnet und dann die Sell-Limit-Order der ganzen Position erstellt, MEXC API + Secret Key sowie Firebase Secret Key werden mit JSON gesendet
-
 import os
 import time
 import hmac
@@ -11,7 +9,6 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-# Firebase URL kann in der Umgebung bleiben
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
 # --- Firebase Funktionen mit Secret Auth ---
@@ -36,7 +33,6 @@ def firebase_hole_kaufpreise(asset, firebase_secret):
             return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
     return []
 
-
 def firebase_speichere_trade_history(trade_data, firebase_secret):
     url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
     response = requests.post(url, json=trade_data)
@@ -52,7 +48,6 @@ def get_asset_balance(asset, api_key, secret_key):
     url = f"https://api.mexc.com/api/v3/account?{query}&signature={signature}"
     headers = {"X-MEXC-APIKEY": api_key}
     res = requests.get(url, headers=headers)
-
     if res.status_code == 200:
         balances = res.json().get("balances", [])
         for entry in balances:
@@ -109,31 +104,6 @@ def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
     adjusted_qty = quantity - (quantity % step_size)
     return round(adjusted_qty, precision)
-
-def get_order_fills(symbol, order_id, api_key, secret_key):
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol.replace('/', '')}&orderId={order_id}&timestamp={timestamp}"
-    signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-    url = f"https://api.mexc.com/api/v3/myTrades?{query}&signature={signature}"
-    headers = {"X-MEXC-APIKEY": api_key}
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        print(f"Fehler beim Abrufen der Trades: {res.text}")
-        return []
-
-def calculate_average_fill_price(fills):
-    total_quantity = 0
-    total_cost = 0
-    for fill in fills:
-        price = float(fill["price"])
-        qty = float(fill["qty"])
-        total_cost += price * qty
-        total_quantity += qty
-    if total_quantity == 0:
-        return 0
-    return total_cost / total_quantity
 
 def delete_open_limit_sell_orders(symbol, api_key, secret_key):
     timestamp = int(time.time() * 1000)
@@ -195,20 +165,16 @@ def has_open_sell_limit_order(symbol, api_key, secret_key):
             return True
     return False
 
-# ... (ALLE IMPORTS UND SETUP UNVERÄNDERT)
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    start_time = time.time()
     data = request.get_json()
 
     symbol = data.get("symbol")
     action = data.get("side", "BUY").upper()
     limit_sell_percent = data.get("limit_sell_percent", None)
     usdt_amount = data.get("usdt_amount")
-    price_for_avg = data.get("price")  # <--- hier ist dein übergebener Preis
+    price_for_avg = data.get("price")  # Limitpreis
 
-    # Secrets aus JSON extrahieren
     api_key = data.get("MEXC_API_KEY", "")
     secret_key = data.get("MEXC_SECRET_KEY", "")
     firebase_secret = data.get("FIREBASE_SECRET", "")
@@ -224,10 +190,7 @@ def webhook():
     filters = symbol_info.get("filters", [])
     baseSizePrecision = symbol_info.get("baseSizePrecision", "0")
     step_size = get_step_size(filters, baseSizePrecision)
-
-    price = get_price(symbol)
-    if price == 0:
-        return jsonify({"error": "Preis nicht verfügbar"}), 400
+    price_precision = get_price_precision(filters)
 
     base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
     offene_position = has_open_sell_limit_order(symbol, api_key, secret_key)
@@ -237,8 +200,15 @@ def webhook():
         "offene_position": offene_position,
         "action": action,
         "step_size": step_size,
-        "marktpreis": price,
     }
+
+    if not price_for_avg:
+        return jsonify({"error": "Feld 'price' fehlt", **debug_info}), 400
+
+    try:
+        limit_price = round(float(price_for_avg), price_precision)
+    except ValueError:
+        return jsonify({"error": "Ungültiger Preis in 'price'", **debug_info}), 400
 
     if not offene_position:
         firebase_loesche_kaufpreise(base_asset, firebase_secret)
@@ -249,7 +219,7 @@ def webhook():
     if action == "BUY":
         if not usdt_amount:
             return jsonify({"error": "usdt_amount fehlt für BUY", **debug_info}), 400
-        quantity = usdt_amount / price
+        quantity = usdt_amount / limit_price
     else:
         quantity = 0
 
@@ -257,52 +227,29 @@ def webhook():
     if quantity <= 0:
         return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
 
-    # Marktorder platzieren
+    # Limit-BUY Order platzieren
     timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol.replace('/', '')}&side={action}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
+    query = (
+        f"symbol={symbol.replace('/', '')}&side={action}&type=LIMIT&timeInForce=GTC"
+        f"&quantity={quantity}&price={limit_price}&timestamp={timestamp}"
+    )
     signature = hmac.new(secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.mexc.com/api/v3/order?{query}&signature={signature}"
     headers = {"X-MEXC-APIKEY": api_key}
     response = requests.post(url, headers=headers)
 
     if response.status_code != 200:
-        return jsonify({"error": "Kauf fehlgeschlagen", "details": response.json(), **debug_info}), 400
+        return jsonify({"error": "Limitorder fehlgeschlagen", "details": response.json(), **debug_info}), 400
 
-    order_data = response.json()
-    order_id = order_data.get("orderId")
-
-    time.sleep(1)
-
-    fills = get_order_fills(symbol, order_id, api_key, secret_key)
-
-    if fills:
-        executed_price_float = calculate_average_fill_price(fills)
-    else:
-        executed_price = float(order_data.get("price", price))
-        price_precision = get_price_precision(filters)
-        executed_price_float = round(executed_price, price_precision)
-
-    # Für Firebase: JSON-"price" verwenden
+    # Für Firebase
     if action == "BUY":
-        if price_for_avg:
-            try:
-                price_to_store = float(price_for_avg)
-                firebase_speichere_kaufpreis(base_asset, price_to_store, firebase_secret)
-                debug_info["price_for_avg_used"] = price_to_store
-            except ValueError:
-                return jsonify({"error": "Ungültiger Preis in 'price'", **debug_info}), 400
-        else:
-            return jsonify({"error": "Feld 'price' fehlt für BUY", **debug_info}), 400
+        firebase_speichere_kaufpreis(base_asset, limit_price, firebase_secret)
+        debug_info["price_for_avg_used"] = limit_price
 
-    # Kaufpreise laden und Durchschnitt berechnen
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
     durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
 
-    if fills:
-        fill_time = int(fills[0]["time"])
-        timestamp_berlin = datetime.fromtimestamp(fill_time / 1000, ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
+    timestamp_berlin = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S")
 
     delete_open_limit_sell_orders(symbol, api_key, secret_key)
 
@@ -311,18 +258,18 @@ def webhook():
 
     if full_quantity > 0 and durchschnittlicher_kaufpreis > 0 and limit_sell_percent is not None:
         limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
-        price_rounded = round(limit_sell_price, get_price_precision(filters))
+        price_rounded = round(limit_sell_price, price_precision)
         create_limit_sell_order(symbol, full_quantity, price_rounded, api_key, secret_key)
     else:
         limit_sell_price = 0
         price_rounded = 0
 
-    usdt_invested = quantity * executed_price_float
+    usdt_invested = quantity * limit_price
 
     response_data = {
         "symbol": symbol,
         "action": action,
-        "executed_price": executed_price_float,
+        "limit_price": limit_price,
         "usdt_invested": round(usdt_invested, 8),
         "durchschnittspreis": durchschnittlicher_kaufpreis,
         "kaufpreise_alle": kaufpreise_liste,
@@ -336,7 +283,7 @@ def webhook():
         "timestamp": timestamp_berlin,
         "symbol": symbol,
         "action": action,
-        "executed_price": executed_price_float,
+        "executed_price": limit_price,
         "durchschnittspreis": durchschnittlicher_kaufpreis,
         "quantity": quantity,
         "usdt_invested": round(usdt_invested, 8),
