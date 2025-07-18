@@ -58,7 +58,7 @@ def get_bingx_market_price(symbol, api_key):
     url = f"https://api.bingx.com/api/v1/ticker/24hr?symbol={symbol}"
     headers = {
         "X-BX-APIKEY": api_key,
-        "User-Agent": "Mozilla/5.0"  # Hilft oft bei gehosteten Servern
+        "User-Agent": "Mozilla/5.0"
     }
 
     try:
@@ -68,14 +68,19 @@ def get_bingx_market_price(symbol, api_key):
         print(f"[DEBUG] Response: {response.text}")
 
         if response.status_code == 200:
-            data = response.json()
-            return float(data.get("lastPrice", 0))
+            try:
+                data = response.json()
+                last_price = float(data.get("lastPrice", 0))
+                print(f"[DEBUG] lastPrice = {last_price}")
+                return last_price
+            except Exception as e:
+                return {"error": "JSON parse failed", "detail": str(e)}
         else:
-            # Hier echte Fehlermeldung zurückgeben
             return {"error": f"API error {response.status_code}", "detail": response.text}
+
     except Exception as e:
-        print(f"[EXCEPTION] {e}")
         return {"error": "Exception", "detail": str(e)}
+
 
 
 def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
@@ -142,7 +147,8 @@ def webhook():
 
     price = price_result
     if price == 0:
-      return jsonify({"error": "Preis nicht verfügbar"}), 400
+       return jsonify({"error": "Preis nicht verfügbar (Preis = 0)"}), 400
+
 
  
 
