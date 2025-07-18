@@ -56,20 +56,27 @@ def sign_bingx_request(query_string, secret_key):
 def get_bingx_market_price(symbol, api_key):
     symbol = symbol.upper()
     url = f"https://api.bingx.com/api/v1/ticker/24hr?symbol={symbol}"
-    headers = {"X-BX-APIKEY": api_key}
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "User-Agent": "Mozilla/5.0"  # Hilft oft bei gehosteten Servern
+    }
 
     try:
         response = requests.get(url, headers=headers)
         print(f"[DEBUG] GET {url}")
         print(f"[DEBUG] Status: {response.status_code}")
-        print(f"[DEBUG] Response Text: {response.text}")
+        print(f"[DEBUG] Response: {response.text}")
+
         if response.status_code == 200:
             data = response.json()
             return float(data.get("lastPrice", 0))
+        else:
+            # Hier echte Fehlermeldung zurückgeben
+            return {"error": f"API error {response.status_code}", "detail": response.text}
     except Exception as e:
-        print(f"[ERROR] Exception bei Preisabfrage: {e}")
+        print(f"[EXCEPTION] {e}")
+        return {"error": "Exception", "detail": str(e)}
 
-    return 0
 
 def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
     timestamp = str(int(time.time() * 1000))
@@ -129,9 +136,15 @@ def webhook():
         return jsonify({"error": "Fehlende Parameter (API-Key, Secret, Symbol oder Firebase)"}), 400
 
     # Preis abrufen
-    price = get_bingx_market_price(symbol, api_key)
+    price_result = get_bingx_market_price(symbol, api_key)
+    if isinstance(price_result, dict) and "error" in price_result:
+       return jsonify(price_result), 400
+
+    price = price_result
     if price == 0:
-        return jsonify({"error": "Preis nicht verfügbar"}), 400
+      return jsonify({"error": "Preis nicht verfügbar"}), 400
+
+ 
 
     base_asset = symbol.replace("-USDT", "")
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
