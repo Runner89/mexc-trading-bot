@@ -56,22 +56,20 @@ def sign_bingx_request(query_string, secret_key):
 def get_bingx_market_price(symbol, api_key):
     symbol = symbol.upper()
     url = f"https://api.bingx.com/api/v1/ticker/24hr?symbol={symbol}"
-    headers = {
-        "X-BX-APIKEY": api_key
-    }
-    response = requests.get(url, headers=headers)
+    headers = {"X-BX-APIKEY": api_key}
 
-    print(f"[DEBUG] Preis-Request: {url}")
-    print(f"[DEBUG] Status: {response.status_code}, Antwort: {response.text}")
-
-    if response.status_code == 200:
-        try:
+    try:
+        response = requests.get(url, headers=headers)
+        print(f"[DEBUG] GET {url}")
+        print(f"[DEBUG] Status: {response.status_code}")
+        print(f"[DEBUG] Response Text: {response.text}")
+        if response.status_code == 200:
             data = response.json()
             return float(data.get("lastPrice", 0))
-        except Exception as e:
-            print(f"[Fehler beim Parsen der Antwort]: {e}")
-    return 0
+    except Exception as e:
+        print(f"[ERROR] Exception bei Preisabfrage: {e}")
 
+    return 0
 
 def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
     timestamp = str(int(time.time() * 1000))
