@@ -1,4 +1,4 @@
-#USDT Amount wird beim Webhook angegeben, der effektive Kaufpreis von MEXC wird in Firebase eingetragen, daraus wird der Durchschnitt berechnet und dann die Sell-Limit-Order der ganzen Position erstellt, MEXC API + Secret Key sowie Firebase Secret Key werden mit JSON gesendet
+#USDT Amount wird beim Webhook angegeben, der im JSON angegebene Kaufpreis in Firebase eingetragen, daraus wird der Durchschnitt berechnet und dann die Sell-Limit-Order der ganzen Position erstellt, MEXC API + Secret Key sowie Firebase Secret Key werden mit JSON gesendet
 
 import os
 import time
