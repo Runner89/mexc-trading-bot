@@ -120,6 +120,14 @@ def berechne_durchschnitt_preis(preise):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
+    data = request.get_json()
+    print(f"[DEBUG] Empfangene Daten: {data}")
+    symbol = data.get("symbol", "").strip()
+    print(f"[DEBUG] Symbol: '{symbol}'")
+    
+    futures_symbol = convert_symbol_to_futures(symbol)
+    print(f"[DEBUG] Futures Symbol: '{futures_symbol}'")
     data = request.get_json()
     symbol = data.get("symbol")
     action = data.get("side", "BUY").upper()
