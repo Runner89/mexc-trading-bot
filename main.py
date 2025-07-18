@@ -36,26 +36,20 @@ def get_bingx_market_price(symbol, api_key, secret_key):
     else:
         return {"error": f"API error {response.status_code}", "detail": response.text}
 
-def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
-    """Limit-Order bei BingX platzieren"""
+def create_bingx_order(symbol, quantity, price, side, api_key, secret_key):
     timestamp = str(int(time.time() * 1000))
-    side = 'buy' if action.upper() == 'BUY' else 'sell'
-    order_type = 'LIMIT'
-    query = f"symbol={symbol}&side={side}&type={order_type}&price={price}&quantity={quantity}&timestamp={timestamp}&apiKey={api_key}"
+    query = f"apiKey={api_key}&symbol={symbol}&side={side}&type=LIMIT&price={price}&quantity={quantity}&timestamp={timestamp}"
     signature = sign_bingx_request(query, secret_key)
     url = f"https://api.bingx.com/api/v1/order?{query}&signature={signature}"
     headers = {"X-BX-APIKEY": api_key}
 
     response = requests.post(url, headers=headers)
-
-    print(f"[DEBUG] Order URL: {url}")
-    print(f"[DEBUG] Antwort: {response.text}")
-
+    print(response.status_code, response.text)
     if response.status_code == 200:
         return response.json()
     else:
-        print(f"Fehler beim Erstellen der Order: {response.text}")
-        return None
+        return {"error": f"API error {response.status_code}", "detail": response.text}
+
 
 def get_exchange_info():
     url = "https://api.bingx.com/api/v1/exchangeInfo"
