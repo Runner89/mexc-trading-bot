@@ -9,11 +9,14 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-# --- Deine neuen Funktionen hier ---
+# ------------------ Helper Funktionen ------------------
+
 def sign_bingx_request(query_string, secret_key):
-    return hmac.new(secret_key.encode(), querprice = get_bingx_market_price(symbol)y_string.encode(), hashlib.sha256).hexdigest()
+    """Erstellt eine HMAC SHA256 Signatur für die BingX API"""
+    return hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
 def get_bingx_market_price(symbol, api_key, secret_key):
+    """Preis vom BingX API mit Signatur abrufen"""
     symbol = symbol.upper()
     timestamp = str(int(time.time() * 1000))
     query = f"apiKey={api_key}&symbol={symbol}&timestamp={timestamp}"
@@ -33,91 +36,17 @@ def get_bingx_market_price(symbol, api_key, secret_key):
     else:
         return {"error": f"API error {response.status_code}", "detail": response.text}
 
-# --- Rest deines Codes hier ---
-
-
-# Firebase Basis-URL aus Umgebung
-FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
-
-
-# ----------------------------- FIREBASE FUNKTIONEN -----------------------------
-
-def firebase_loesche_kaufpreise(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
-    response = requests.delete(url)
-    print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
-
-
-def firebase_speichere_kaufpreis(asset, price, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
-    data = {"price": price}
-    response = requests.post(url, json=data)
-    print(f"Kaufpreis gespeichert für {asset}: {price}")
-
-
-def firebase_hole_kaufpreise(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
-    response = requests.get(url)
-    if response.status_code == 200 and response.content:
-        data = response.json()
-        if data:
-            return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
-    return []
-
-
-def firebase_speichere_trade_history(trade_data, firebase_secret):
-    url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
-    response = requests.post(url, json=trade_data)
-    if response.status_code == 200:
-        print("Trade in History gespeichert")
-    else:
-        print(f"Fehler beim Speichern in History: {response.text}")
-
-
-# ----------------------------- BINGX API FUNKTIONEN -----------------------------
-
-def sign_bingx_request(query_string, secret_key):
-    return hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-
-
-def get_bingx_market_price(symbol, api_key):
-    symbol = symbol.upper()
-    url = f"https://api.bingx.com/api/v1/ticker/24hr?symbol={symbol}"
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    try:
-        response = requests.get(url, headers=headers)
-        print(f"[DEBUG] GET {url}")
-        print(f"[DEBUG] Status: {response.status_code}")
-        print(f"[DEBUG] Response: {response.text}")
-
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                last_price = float(data.get("lastPrice", 0))
-                print(f"[DEBUG] lastPrice = {last_price}")
-                return last_price
-            except Exception as e:
-                return {"error": "JSON parse failed", "detail": str(e)}
-        else:
-            return {"error": f"API error {response.status_code}", "detail": response.text}
-
-    except Exception as e:
-        return {"error": "Exception", "detail": str(e)}
-
-
-
 def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
+    """Limit-Order bei BingX platzieren"""
     timestamp = str(int(time.time() * 1000))
     side = 'buy' if action.upper() == 'BUY' else 'sell'
     order_type = 'LIMIT'
     query = f"symbol={symbol}&side={side}&type={order_type}&price={price}&quantity={quantity}&timestamp={timestamp}&apiKey={api_key}"
     signature = sign_bingx_request(query, secret_key)
     url = f"https://api.bingx.com/api/v1/order?{query}&signature={signature}"
-    response = requests.post(url)
+    headers = {"X-BX-APIKEY": api_key}
+
+    response = requests.post(url, headers=headers)
 
     print(f"[DEBUG] Order URL: {url}")
     print(f"[DEBUG] Antwort: {response.text}")
@@ -128,26 +57,54 @@ def create_bingx_order(symbol, quantity, price, action, api_key, secret_key):
         print(f"Fehler beim Erstellen der Order: {response.text}")
         return None
 
-
 def get_exchange_info():
     url = "https://api.bingx.com/api/v1/exchangeInfo"
     res = requests.get(url)
     return res.json()
 
-
 def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
-    adjusted_qty = quantity - (quantity % step_size)
+    adjusted_qty = int(quantity / step_size) * step_size
     return round(adjusted_qty, precision)
-
 
 def berechne_durchschnitt_preis(kaufpreise_liste):
     if kaufpreise_liste:
         return sum(kaufpreise_liste) / len(kaufpreise_liste)
     return 0
 
+# ------------------ Firebase Funktionen ------------------
 
-# ----------------------------- WEBHOOK ROUTE -----------------------------
+FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
+
+def firebase_loesche_kaufpreise(asset, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    response = requests.delete(url)
+    print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
+
+def firebase_speichere_kaufpreis(asset, price, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    data = {"price": price}
+    response = requests.post(url, json=data)
+    print(f"Kaufpreis gespeichert für {asset}: {price}")
+
+def firebase_hole_kaufpreise(asset, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    response = requests.get(url)
+    if response.status_code == 200 and response.content:
+        data = response.json()
+        if data:
+            return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
+    return []
+
+def firebase_speichere_trade_history(trade_data, firebase_secret):
+    url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
+    response = requests.post(url, json=trade_data)
+    if response.status_code == 200:
+        print("Trade in History gespeichert")
+    else:
+        print(f"Fehler beim Speichern in History: {response.text}")
+
+# ------------------ Webhook Route ------------------
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -173,12 +130,8 @@ def webhook():
         return jsonify(price_result), 400
     price = price_result
 
-    # Danach kommt die Abfrage, ob price == 0
     if price == 0:
        return jsonify({"error": "Preis nicht verfügbar"}), 400
-
-
- 
 
     base_asset = symbol.replace("-USDT", "")
     kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
@@ -203,9 +156,16 @@ def webhook():
     else:
         quantity = 0
 
-    # Schrittgröße anpassen
-    filters = get_exchange_info().get("symbols", [])
-    step_size = 0.01  # Standard
+    # Schrittgröße bestimmen und Menge anpassen
+    exchange_info = get_exchange_info()
+    step_size = 0.01  # Fallback
+    for s in exchange_info.get("symbols", []):
+        if s.get("symbol") == symbol:
+            for f in s.get("filters", []):
+                if f.get("filterType") == "LOT_SIZE":
+                    step_size = float(f.get("stepSize", 0.01))
+                    break
+
     quantity = adjust_quantity(quantity, step_size)
 
     if quantity <= 0:
@@ -214,10 +174,9 @@ def webhook():
     # Order erstellen
     response = create_bingx_order(symbol, quantity, price, action, api_key, secret_key)
     if response:
-        order_data = response
-        executed_price = float(order_data.get("price", price))
+        executed_price = float(response.get("price", price))
 
-        # Historie speichern
+        # Trade Historie speichern
         trade_entry = {
             "timestamp": datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S"),
             "symbol": symbol,
@@ -231,7 +190,7 @@ def webhook():
         }
         firebase_speichere_trade_history(trade_entry, firebase_secret)
 
-        # Optional: Limit Sell
+        # Optional: Limit Sell Order
         limit_sell_price = None
         if limit_sell_percent is not None and durchschnittlicher_kaufpreis > 0:
             limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
@@ -251,7 +210,7 @@ def webhook():
     else:
         return jsonify({"error": "Order fehlgeschlagen"}), 400
 
+# ------------------ App Start ------------------
 
-# ----------------------------- START -----------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
