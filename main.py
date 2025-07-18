@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 # --- Deine neuen Funktionen hier ---
 def sign_bingx_request(query_string, secret_key):
-    return hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(secret_key.encode(), querprice = get_bingx_market_price(symbol)y_string.encode(), hashlib.sha256).hexdigest()
 
 def get_bingx_market_price(symbol, api_key, secret_key):
     symbol = symbol.upper()
@@ -168,13 +168,14 @@ def webhook():
         return jsonify({"error": "Fehlende Parameter (API-Key, Secret, Symbol oder Firebase)"}), 400
 
     # Preis abrufen
-    price_result = get_bingx_market_price(symbol, api_key)
+    price_result = get_bingx_market_price(symbol, api_key, secret_key)
     if isinstance(price_result, dict) and "error" in price_result:
-       return jsonify(price_result), 400
-
+        return jsonify(price_result), 400
     price = price_result
+
+    # Danach kommt die Abfrage, ob price == 0
     if price == 0:
-       return jsonify({"error": "Preis nicht verfügbar (Preis = 0)"}), 400
+       return jsonify({"error": "Preis nicht verfügbar"}), 400
 
 
  
