@@ -53,9 +53,19 @@ def convert_symbol_to_futures(symbol):
 
 def get_futures_price(symbol):
     url = f"https://contract.mexc.com/api/v1/contract/ticker"
-    res = requests.get(url, params={"symbol": symbol})
-    data = res.json()
-    return float(data['data']["last_price"])
+    try:
+        res = requests.get(url, params={"symbol": symbol}, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+
+        if "data" in data and data["data"] and "last_price" in data["data"]:
+            return float(data["data"]["last_price"])
+        else:
+            print(f"[Fehler] Ungültige API-Antwort für Symbol {symbol}: {data}")
+            return -1  # oder raise ValueError(...)
+    except Exception as e:
+        print(f"[Exception] Fehler beim Abrufen des Futures-Preises: {e}")
+        return -1
 
 def send_futures_order(symbol, quantity, side, api_key, api_secret):
     url = "https://contract.mexc.com/api/v1/private/order/submit"
@@ -128,7 +138,7 @@ def webhook():
     market_price = get_futures_price(futures_symbol)
 
     if market_price <= 0:
-        return jsonify({"error": "Ungültiger Marktpreis"}), 400
+       return jsonify({"error": "Ungültiger oder nicht abrufbarer Marktpreis"}), 400
 
     base_asset = symbol.split("/")[0]
 
