@@ -9,6 +9,33 @@ from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
+# --- Deine neuen Funktionen hier ---
+def sign_bingx_request(query_string, secret_key):
+    return hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+
+def get_bingx_market_price(symbol, api_key, secret_key):
+    symbol = symbol.upper()
+    timestamp = str(int(time.time() * 1000))
+    query = f"apiKey={api_key}&symbol={symbol}&timestamp={timestamp}"
+    signature = sign_bingx_request(query, secret_key)
+
+    url = f"https://api.bingx.com/api/v1/ticker/24hr?{query}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+
+    response = requests.get(url, headers=headers)
+    print(f"[DEBUG] GET {url}")
+    print(f"[DEBUG] Status: {response.status_code}")
+    print(f"[DEBUG] Response: {response.text}")
+
+    if response.status_code == 200:
+        data = response.json()
+        return float(data.get("lastPrice", 0))
+    else:
+        return {"error": f"API error {response.status_code}", "detail": response.text}
+
+# --- Rest deines Codes hier ---
+
+
 # Firebase Basis-URL aus Umgebung
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
