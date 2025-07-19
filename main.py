@@ -3,15 +3,15 @@ import time
 import hmac
 import hashlib
 import requests
-from urllib.parse import quote_plus
+from urllib.parse import urlencode
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 
 def generate_signature(params: dict, secret: str) -> str:
-    # URL-encoded Parameter sortieren und zusammenfügen
-    query_string = '&'.join(f"{key}={quote_plus(str(params[key]))}" for key in sorted(params))
+    # URL-kodierter Query-String, sortiert nach Keys
+    query_string = urlencode(sorted(params.items()))
     print("Query String for signature:", query_string)
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     print("Generated signature:", signature)
@@ -23,7 +23,6 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    # Prüfen, ob alle nötigen Felder da sind
     required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
     missing = [k for k in required_keys if k not in data]
     if missing:
@@ -31,34 +30,35 @@ def webhook():
 
     symbol = data["symbol"]
     side = data["side"].upper()
-    amount = str(data["usdt_amount"])  # als String
+    amount = str(data["usdt_amount"])  # Wichtig: als String
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
 
     path = "/openApi/spot/v1/trade/order"
     url = BASE_URL + path
-    timestamp = str(int(time.time() * 1000))
+    timestamp = int(time.time() * 1000)
 
     params = {
-        "symbol": symbol,
-        "side": side,
-        "type": "MARKET",
         "quoteOrderQty": amount,
-        "timestamp": timestamp
+        "side": side,
+        "symbol": symbol,
+        "timestamp": timestamp,
+        "type": "MARKET"
     }
 
     signature = generate_signature(params, secret_key)
     params["signature"] = signature
 
     headers = {
-        "X-BX-APIKEY": api_key
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/x-www-form-urlencoded"
     }
 
     response = requests.post(url, headers=headers, data=params)
 
     try:
         resp_json = response.json()
-    except:
+    except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
 
     return jsonify({
