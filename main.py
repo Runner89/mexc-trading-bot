@@ -85,28 +85,34 @@ def get_asset_balance(asset, api_key, secret_key):
     signature = generate_signature(params, secret_key)
     params["signature"] = signature
     headers = {"X-BX-APIKEY": api_key}
+    
     response = requests.get(url, headers=headers, params=params)
 
     asset_list = []
     matched_amount = 0.0
+    raw_response = {}
 
     try:
-        data = response.json()
-        if "data" in data:
+        raw_response = response.json()
+        data = raw_response
+        if "data" in data and isinstance(data["data"], list):
+            print(f"[DEBUG] Suche nach Asset '{asset}'")
+            print("[DEBUG] Antwort von BingX:")
             for asset_info in data["data"]:
                 name = asset_info.get("asset")
                 available = asset_info.get("available")
+                print(f"  {name}: {available}")
                 asset_list.append({ "asset": name, "available": available })
-
                 if name == asset:
                     try:
                         matched_amount = float(available)
                     except:
                         matched_amount = 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print("[ERROR] Fehler beim Parsen von Asset-Daten:", e)
 
-    return matched_amount, asset_list
+    return matched_amount, asset_list, raw_response
+
 
 
 
@@ -212,7 +218,8 @@ def webhook():
 
 
             # Verfügbare Menge des Coins abfragen
-            coin_amount, all_assets = get_asset_balance(coin, api_key, secret_key)
+            coin_amount, all_assets, asset_raw_response = get_asset_balance(coin, api_key, secret_key)
+
 
 
             if coin_amount > 0:
@@ -231,7 +238,8 @@ def webhook():
             "sell_limit_order": sell_limit_order,
             "cancel_sell_limit_orders_response": cancel_responses,
             "sell_limit_order_response": sell_limit_response,
-            "available_assets": all_assets   # <--- Hier!
+            "available_assets": all_assets,   # <--- Hier!
+            "asset_api_raw_response": asset_raw_response
         })
 
     else:
