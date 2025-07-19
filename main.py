@@ -185,15 +185,7 @@ def webhook():
         sell_limit_response = None
 
         if sell_limit_order is not None:
-            # Alle offene Sell-Limit-Orders löschen
-            open_orders = get_open_sell_limit_orders(symbol, api_key, secret_key)
-            if isinstance(open_orders, dict) and "data" in open_orders:
-                for order in open_orders["data"]:
-                    if order.get("side") == "SELL" and order.get("type") == "LIMIT":
-                        order_id = order.get("orderId") or order.get("id")
-                        if order_id:
-                            cancel_resp = cancel_order(order_id, symbol, api_key, secret_key)
-                            cancel_responses.append(cancel_resp)
+           
 
             # Coin aus Symbol extrahieren (z.B. BTCUSDT -> BTC)
             if symbol.endswith("USDT"):
