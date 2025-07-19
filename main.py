@@ -24,7 +24,7 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    # Pflichtfelder ohne firebase_secret und price sind optional
+    # Pflichtfelder ohne firebase_secret, price, limit_sell_percent optional
     required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
     missing = [k for k in required_keys if k not in data]
     if missing:
@@ -37,6 +37,7 @@ def webhook():
     secret_key = data["BINGX_SECRET_KEY"]
     price = data.get("price")  # optional
     firebase_secret = data.get("firebase_secret")  # optional
+    limit_sell_percent = data.get("limit_sell_percent")  # optional
 
     # BingX Order erstellen
     path = "/openApi/spot/v1/trade/order"
@@ -65,6 +66,9 @@ def webhook():
         resp_json = response.json()
     except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
+
+    avg_price = None
+    sell_limit_order = None
 
     # Wenn Bestellung erfolgreich, optional Firebase Update + Durchschnitt berechnen
     if response.status_code == 200:
@@ -96,16 +100,24 @@ def webhook():
                         except (ValueError, TypeError):
                             pass
 
-            avg_price = None
             if prices_list:
                 avg_price = sum(prices_list) / len(prices_list)
+
+            # Sell-Limit-Order berechnen, falls limit_sell_percent vorhanden und avg_price bekannt
+            if avg_price is not None and limit_sell_percent is not None:
+                try:
+                    percent = float(limit_sell_percent)
+                    sell_limit_order = avg_price * (1 + percent / 100)
+                except (ValueError, TypeError):
+                    sell_limit_order = None
 
             return jsonify({
                 "order_status_code": response.status_code,
                 "order_response": resp_json,
                 "firebase_status_code": firebase_response.status_code,
                 "firebase_response": firebase_resp_json,
-                "average_price": avg_price
+                "average_price": avg_price,
+                "sell_limit_order": sell_limit_order
             })
 
         else:
@@ -113,14 +125,18 @@ def webhook():
             return jsonify({
                 "order_status_code": response.status_code,
                 "order_response": resp_json,
-                "message": "Firebase-Daten nicht vorhanden, Firebase-Update übersprungen."
+                "message": "Firebase-Daten nicht vorhanden, Firebase-Update übersprungen.",
+                "average_price": None,
+                "sell_limit_order": None
             })
 
     else:
         return jsonify({
             "order_status_code": response.status_code,
             "order_response": resp_json,
-            "message": "Order fehlgeschlagen, Firebase Update nicht ausgeführt."
+            "message": "Order fehlgeschlagen, Firebase Update nicht ausgeführt.",
+            "average_price": None,
+            "sell_limit_order": None
         }), 400
 
 
