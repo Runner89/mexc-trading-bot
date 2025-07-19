@@ -86,22 +86,28 @@ def get_asset_balance(asset, api_key, secret_key):
     params["signature"] = signature
     headers = {"X-BX-APIKEY": api_key}
     response = requests.get(url, headers=headers, params=params)
-    
+
+    asset_list = []
+    matched_amount = 0.0
+
     try:
         data = response.json()
         if "data" in data:
-            print(f"[DEBUG] Suche nach Asset '{asset}'")
-            print("[DEBUG] Verfügbare Assets:")
             for asset_info in data["data"]:
-                print(f"  {asset_info.get('asset')}: {asset_info.get('available')}")
-                
-                # Hier findet der eigentliche Vergleich statt
-                if asset_info.get("asset") == asset:
-                    return float(asset_info.get("available", 0))
+                name = asset_info.get("asset")
+                available = asset_info.get("available")
+                asset_list.append({ "asset": name, "available": available })
+
+                if name == asset:
+                    try:
+                        matched_amount = float(available)
+                    except:
+                        matched_amount = 0.0
     except Exception:
         pass
 
-    return 0.0
+    return matched_amount, asset_list
+
 
 
 @app.route("/webhook", methods=["POST"])
