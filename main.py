@@ -1,70 +1,201 @@
-from flask import Flask, request, jsonify
+import os
 import time
 import hmac
 import hashlib
 import requests
-from urllib.parse import urlencode
+from flask import Flask, request, jsonify
+from datetime import datetime
+from zoneinfo import ZoneInfo  # Python 3.9+
 
 app = Flask(__name__)
 
-BASE_URL = "https://open-api.bingx.com"
+# Firebase URL kann in der Umgebung bleiben
+FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
-def generate_signature(params: dict, secret: str) -> str:
-    # URL-kodierter Query-String, sortiert nach Keys
-    query_string = urlencode(sorted(params.items()))
-    print("Query String for signature:", query_string)
-    signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-    print("Generated signature:", signature)
-    return signature
+# --- Firebase Funktionen mit Secret Auth ---
+
+def firebase_loesche_kaufpreise(asset, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    response = requests.delete(url)
+    print(f"Kaufpreise gelöscht für {asset}: {response.status_code}")
+
+def firebase_speichere_kaufpreis(asset, price, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    data = {"price": price}
+    response = requests.post(url, json=data)
+    print(f"Kaufpreis gespeichert für {asset}: {price}")
+
+def firebase_hole_kaufpreise(asset, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    response = requests.get(url)
+    if response.status_code == 200 and response.content:
+        data = response.json()
+        if data:
+            return [float(entry.get("price", 0)) for entry in data.values() if "price" in entry]
+    return []
+
+
+def firebase_speichere_trade_history(trade_data, firebase_secret):
+    url = f"{FIREBASE_URL}/History.json?auth={firebase_secret}"
+    response = requests.post(url, json=trade_data)
+    if response.status_code == 200:
+        print("Trade in History gespeichert")
+    else:
+        print(f"Fehler beim Speichern in History: {response.text}")
+
+def get_asset_balance_bingx(asset, api_key, secret_key):
+    url = "https://api.bingx.com/v1/account/assets"
+    headers = {
+        "X-BingX-APIKEY": api_key,
+        "X-BingX-SIGNATURE": secret_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        assets = response.json().get("data", [])
+        for asset_data in assets:
+            if asset_data['symbol'] == asset:
+                return float(asset_data['free'])
+    else:
+        print(f"Fehler beim Abrufen des Saldos: {response.text}")
+    return 0.0
+
+def berechne_durchschnitt_preis(preise):
+    if not preise:
+        return 0
+    return sum(preise) / len(preise)
+
+def get_price(symbol):
+    url = f"https://api.bingx.com/v1/market/ticker?symbol={symbol}"
+    res = requests.get(url)
+    data = res.json()
+    return float(data.get("data", {}).get("last", 0))
+
+def adjust_quantity(quantity, step_size):
+    precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
+    adjusted_qty = quantity - (quantity % step_size)
+    return round(adjusted_qty, precision)
+
+def create_limit_sell_order(symbol, quantity, price, api_key, secret_key):
+    url = "https://api.bingx.com/v1/order"
+    headers = {
+        "X-BingX-APIKEY": api_key,
+        "X-BingX-SIGNATURE": secret_key
+    }
+    data = {
+        "symbol": symbol,
+        "side": "SELL",
+        "type": "LIMIT",
+        "quantity": quantity,
+        "price": price,
+        "timeInForce": "GTC"  # Good Till Canceled
+    }
+    response = requests.post(url, json=data, headers=headers)
+    if response.status_code == 200:
+        print(f"Neue Limit Sell Order erstellt zum Preis {price}")
+        return response.json()
+    else:
+        print(f"Fehler beim Erstellen der Limit Sell Order: {response.text}")
+        return None
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    if not data:
-        return jsonify({"error": "Kein JSON erhalten"}), 400
+    start_time = time.time()
+    data = request.get_json()
 
-    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
-    missing = [k for k in required_keys if k not in data]
-    if missing:
-        return jsonify({"error": f"Fehlende Felder: {missing}"}), 400
+    symbol = data.get("symbol")
+    action = data.get("side", "BUY").upper()
+    limit_sell_percent = data.get("limit_sell_percent", None)
+    usdt_amount = data.get("usdt_amount")
+    price_for_avg = data.get("price")  # <--- hier ist dein übergebener Preis
 
-    symbol = data["symbol"]
-    side = data["side"].upper()
-    amount = str(data["usdt_amount"])  # Wichtig: als String
-    api_key = data["BINGX_API_KEY"]
-    secret_key = data["BINGX_SECRET_KEY"]
+    # Secrets aus JSON extrahieren
+    api_key = data.get("BINGX_API_KEY", "")
+    secret_key = data.get("BINGX_SECRET_KEY", "")
+    firebase_secret = data.get("FIREBASE_SECRET", "")
 
-    path = "/openApi/spot/v1/trade/order"
-    url = BASE_URL + path
-    timestamp = int(time.time() * 1000)
+    if not symbol or not api_key or not secret_key or not firebase_secret:
+        return jsonify({"error": "symbol, BINGX_API_KEY, BINGX_SECRET_KEY oder FIREBASE_SECRET fehlt"}), 400
 
-    params = {
-        "quoteOrderQty": amount,
-        "side": side,
+    price = get_price(symbol)
+    if price == 0:
+        return jsonify({"error": "Preis nicht verfügbar"}), 400
+
+    base_asset = symbol.split("-")[0] if "-" in symbol else symbol.replace("USDT", "")
+    offene_position = False  # Implementiere Logik für offene Positionen, falls gewünscht
+
+    debug_info = {
+        "base_asset": base_asset,
+        "offene_position": offene_position,
+        "action": action,
+        "marktpreis": price,
+    }
+
+    if not offene_position:
+        firebase_loesche_kaufpreise(base_asset, firebase_secret)
+        debug_info["firebase_loeschen"] = True
+    else:
+        debug_info["firebase_loeschen"] = False
+
+    if action == "BUY":
+        if not usdt_amount:
+            return jsonify({"error": "usdt_amount fehlt für BUY", **debug_info}), 400
+        quantity = usdt_amount / price
+    else:
+        quantity = 0
+
+    quantity = adjust_quantity(quantity, 0.01)  # Beispiel: Präzision von 2 Dezimalstellen für die Menge
+    if quantity <= 0:
+        return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
+
+    # Marktorder platzieren (oder Market BUY)
+    if action == "BUY":
+        data = {
+            "symbol": symbol,
+            "side": "BUY",
+            "quantity": quantity,
+            "price": price
+        }
+        response = create_limit_sell_order(symbol, quantity, price, api_key, secret_key)
+
+    if action == "BUY" and price_for_avg:
+        try:
+            price_to_store = float(price_for_avg)
+            firebase_speichere_kaufpreis(base_asset, price_to_store, firebase_secret)
+            debug_info["price_for_avg_used"] = price_to_store
+        except ValueError:
+            return jsonify({"error": "Ungültiger Preis in 'price'", **debug_info}), 400
+    else:
+        return jsonify({"error": "Feld 'price' fehlt für BUY", **debug_info}), 400
+
+    # Kaufpreise laden und Durchschnitt berechnen
+    kaufpreise_liste = firebase_hole_kaufpreise(base_asset, firebase_secret)
+    durchschnittlicher_kaufpreis = berechne_durchschnitt_preis(kaufpreise_liste)
+
+    full_quantity = get_asset_balance_bingx(base_asset, api_key, secret_key)
+
+    if full_quantity > 0 and durchschnittlicher_kaufpreis > 0 and limit_sell_percent is not None:
+        limit_sell_price = durchschnittlicher_kaufpreis * (1 + limit_sell_percent / 100)
+        price_rounded = round(limit_sell_price, 2)
+        create_limit_sell_order(symbol, full_quantity, price_rounded, api_key, secret_key)
+    else:
+        limit_sell_price = 0
+        price_rounded = 0
+
+    response_data = {
         "symbol": symbol,
-        "timestamp": timestamp,
-        "type": "MARKET"
+        "action": action,
+        "executed_price": price,
+        "usdt_invested": round(usdt_amount, 8),
+        "durchschnittspreis": durchschnittlicher_kaufpreis,
+        "kaufpreise_alle": kaufpreise_liste,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "debug": debug_info,
+        "limit_sell_price": limit_sell_price,
+        "price_rounded": price_rounded
     }
 
-    signature = generate_signature(params, secret_key)
-    params["signature"] = signature
+    return jsonify(response_data)
 
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-
-    response = requests.post(url, headers=headers, data=params)
-
-    try:
-        resp_json = response.json()
-    except Exception:
-        resp_json = {"error": "Antwort kein JSON", "content": response.text}
-
-    return jsonify({
-        "status_code": response.status_code,
-        "response": resp_json
-    })
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
