@@ -203,12 +203,18 @@ def webhook():
             percent = float(limit_sell_percent)
             sell_limit_order = round(avg_price * (1 + percent / 100), 6)
             open_orders_resp, open_orders_debug = get_open_sell_limit_orders(symbol_normalized, api_key, secret_key)
+            existing_sell_limit_orders = []
             if isinstance(open_orders_resp.get("data"), list):
                 for order in open_orders_resp["data"]:
                     if order.get("side") == "SELL" and order.get("type") == "LIMIT":
+                        existing_sell_limit_orders.append(order)
                         order_id = order.get("orderId")
                         cancel_resp, cancel_debug = cancel_order(order_id, symbol_normalized, api_key, secret_key)
-                        cancel_responses.append({"order_id": order_id, "cancel_response": cancel_resp, "cancel_debug": cancel_debug})
+                        cancel_responses.append({
+                            "order_id": order_id,
+                            "cancel_response": cancel_resp,
+                            "cancel_debug": cancel_debug
+                        })           
             coin = symbol_normalized.replace("USDT", "")
             coin_amount, all_assets, asset_raw_response, asset_debug_info = get_asset_balance(coin, api_key, secret_key)
             if coin_amount > 0:
