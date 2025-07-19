@@ -86,18 +86,21 @@ def get_asset_balance(asset, api_key, secret_key):
     params["signature"] = signature
     headers = {"X-BX-APIKEY": api_key}
     response = requests.get(url, headers=headers, params=params)
+    
     try:
         data = response.json()
         if "data" in data:
+            print(f"[DEBUG] Suche nach Asset '{asset}'")
+            print("[DEBUG] Verfügbare Assets:")
             for asset_info in data["data"]:
+                print(f"  {asset_info.get('asset')}: {asset_info.get('available')}")
+                
+                # Hier findet der eigentliche Vergleich statt
                 if asset_info.get("asset") == asset:
                     return float(asset_info.get("available", 0))
     except Exception:
         pass
-    print(f"[DEBUG] Asset '{asset}' nicht gefunden. Vorhandene Assets:")
-    if "data" in data:
-        for a in data["data"]:
-            print(f" - {a.get('asset')}: {a.get('available')}")
+
     return 0.0
 
 
