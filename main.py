@@ -94,7 +94,12 @@ def get_asset_balance(asset, api_key, secret_key):
                     return float(asset_info.get("available", 0))
     except Exception:
         pass
+    print(f"[DEBUG] Asset '{asset}' nicht gefunden. Vorhandene Assets:")
+    if "data" in data:
+        for a in data["data"]:
+            print(f" - {a.get('asset')}: {a.get('available')}")
     return 0.0
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
