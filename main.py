@@ -11,6 +11,14 @@ app = Flask(__name__)
 BASE_URL = "https://open-api.bingx.com"
 FIREBASE_URL = os.getenv("FIREBASE_URL")  # Muss in Environment gesetzt sein
 
+
+firebase_response = None
+firebase_resp_json = None
+cancel_responses = []
+sell_limit_response = None
+avg_price = None
+sell_limit_order = None
+
 def generate_signature(params: dict, secret: str) -> str:
     query_string = urlencode(sorted(params.items()))
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
@@ -222,4 +230,4 @@ def webhook():
         }), 400
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
