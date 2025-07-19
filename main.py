@@ -193,11 +193,9 @@ def webhook():
         sell_limit_response = None
 
         if sell_limit_order is not None:
-            # Coin aus Symbol extrahieren (z.B. ONDO-USDT -> ONDO)
-            if "-" in symbol:
-                coin = symbol.split("-")[0]
-            else:
-                coin = symbol
+            # Coin aus Symbol extrahieren (funktioniert auch bei "ONDOUSDT", "ONDO-USDT", etc.)
+            coin = symbol.replace("USDT", "").replace("-", "").replace("/", "")
+
 
             # Verfügbare Menge des Coins abfragen
             coin_amount = get_asset_balance(coin, api_key, secret_key)
