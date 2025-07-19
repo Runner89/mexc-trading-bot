@@ -1,15 +1,27 @@
-import os
+import json
 import time
 import hmac
 import hashlib
 import requests
 
-# Konfiguration aus Umgebungsvariablen
-symbol = os.getenv("SYMBOL", "NEXOUSDT")
-side = os.getenv("SIDE", "BUY")
-amount = os.getenv("USDT_AMOUNT", "1.5")
-api_key = os.getenv("BINGX_API_KEY")
-secret_key = os.getenv("BINGX_SECRET_KEY")
+# JSON-Konfiguration im Code
+config_json = """
+{
+  "symbol": "NEXOUSDT",
+  "side": "BUY",
+  "usdt_amount": 1.5,
+  "BINGX_API_KEY": "xxxx",
+  "BINGX_SECRET_KEY": "yyyy"
+}
+"""
+
+config = json.loads(config_json)
+
+symbol = config["symbol"]
+side = config["side"]
+amount = config["usdt_amount"]
+api_key = config["BINGX_API_KEY"]
+secret_key = config["BINGX_SECRET_KEY"]
 
 BASE_URL = "https://open-api.bingx.com"
 
