@@ -9,7 +9,7 @@ import os
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
-FIREBASE_URL = os.getenv("FIREBASE_URL")  # Firebase URL aus der Environment Variable
+FIREBASE_URL = os.getenv("FIREBASE_URL")  # Firebase URL aus Environment Variable
 
 def generate_signature(params: dict, secret: str) -> str:
     query_string = urlencode(sorted(params.items()))
@@ -24,7 +24,8 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY", "price", "firebase_secret"]
+    # Pflichtfelder ohne firebase_secret und price sind optional
+    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
     missing = [k for k in required_keys if k not in data]
     if missing:
         return jsonify({"error": f"Fehlende Felder: {missing}"}), 400
@@ -34,8 +35,8 @@ def webhook():
     amount = str(data["usdt_amount"])
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
-    price = data["price"]
-    firebase_secret = data["firebase_secret"]
+    price = data.get("price")  # optional
+    firebase_secret = data.get("firebase_secret")  # optional
 
     # BingX Order erstellen
     path = "/openApi/spot/v1/trade/order"
@@ -65,25 +66,55 @@ def webhook():
     except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
 
-    # Wenn Bestellung erfolgreich, dann Preis zu Firebase hinzufügen
+    # Wenn Bestellung erfolgreich, optional Firebase Update + Durchschnitt berechnen
     if response.status_code == 200:
-        firebase_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
-        firebase_data = {
-            "price": price
-        }
+        if firebase_secret and price is not None:
+            firebase_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
+            firebase_data = {"price": price}
 
-        firebase_response = requests.post(firebase_path, json=firebase_data)
-        try:
-            firebase_resp_json = firebase_response.json()
-        except Exception:
-            firebase_resp_json = {"error": "Firebase Antwort kein JSON", "content": firebase_response.text}
+            # Neuen Preis in Firebase eintragen
+            firebase_response = requests.post(firebase_path, json=firebase_data)
+            try:
+                firebase_resp_json = firebase_response.json()
+            except Exception:
+                firebase_resp_json = {"error": "Firebase Antwort kein JSON", "content": firebase_response.text}
 
-        return jsonify({
-            "order_status_code": response.status_code,
-            "order_response": resp_json,
-            "firebase_status_code": firebase_response.status_code,
-            "firebase_response": firebase_resp_json
-        })
+            # Alle Preise abrufen zum Durchschnitt berechnen
+            get_prices_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
+            get_response = requests.get(get_prices_path)
+            try:
+                all_prices_data = get_response.json()
+            except Exception:
+                all_prices_data = {}
+
+            prices_list = []
+            if isinstance(all_prices_data, dict):
+                for val in all_prices_data.values():
+                    if isinstance(val, dict) and "price" in val:
+                        try:
+                            prices_list.append(float(val["price"]))
+                        except (ValueError, TypeError):
+                            pass
+
+            avg_price = None
+            if prices_list:
+                avg_price = sum(prices_list) / len(prices_list)
+
+            return jsonify({
+                "order_status_code": response.status_code,
+                "order_response": resp_json,
+                "firebase_status_code": firebase_response.status_code,
+                "firebase_response": firebase_resp_json,
+                "average_price": avg_price
+            })
+
+        else:
+            # Kein Firebase Update, nur Order Response
+            return jsonify({
+                "order_status_code": response.status_code,
+                "order_response": resp_json,
+                "message": "Firebase-Daten nicht vorhanden, Firebase-Update übersprungen."
+            })
 
     else:
         return jsonify({
