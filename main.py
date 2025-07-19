@@ -212,7 +212,8 @@ def webhook():
 
 
             # Verfügbare Menge des Coins abfragen
-            coin_amount = get_asset_balance(coin, api_key, secret_key)
+            coin_amount, all_assets = get_asset_balance(coin, api_key, secret_key)
+
 
             if coin_amount > 0:
                 sell_limit_response = place_sell_limit_order(symbol, str(coin_amount), sell_limit_order, api_key, secret_key)
@@ -229,7 +230,8 @@ def webhook():
             "average_price": avg_price,
             "sell_limit_order": sell_limit_order,
             "cancel_sell_limit_orders_response": cancel_responses,
-            "sell_limit_order_response": sell_limit_response
+            "sell_limit_order_response": sell_limit_response,
+            "available_assets": all_assets   # <--- Hier!
         })
 
     else:
