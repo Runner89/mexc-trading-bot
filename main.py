@@ -67,8 +67,14 @@ def berechne_durchschnitt_preis(preise):
 def get_price(symbol):
     url = f"https://api.bingx.com/v1/market/ticker?symbol={symbol}"
     res = requests.get(url)
-    data = res.json()
-    return float(data.get("data", {}).get("last", 0))
+    print(f"API Antwort: {res.text}")  # Debugging-Ausgabe
+    if res.status_code == 200:
+        data = res.json()
+        # Überprüfen, ob wir den richtigen Preis bekommen
+        if "data" in data and "last" in data["data"]:
+            return float(data["data"]["last"])
+    return 0
+
 
 def adjust_quantity(quantity, step_size):
     precision = len(str(step_size).split('.')[-1]) if '.' in str(step_size) else 0
