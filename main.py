@@ -10,6 +10,7 @@ app = Flask(__name__)
 BASE_URL = "https://open-api.bingx.com"
 
 def generate_signature(params: dict, secret: str) -> str:
+    # URL-encoded Parameter sortieren und zusammenfügen
     query_string = '&'.join(f"{key}={quote_plus(str(params[key]))}" for key in sorted(params))
     print("Query String for signature:", query_string)
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
@@ -20,12 +21,13 @@ def generate_signature(params: dict, secret: str) -> str:
 def webhook():
     data = request.json
     if not data:
-        return jsonify({"error": "No JSON payload received"}), 400
+        return jsonify({"error": "Kein JSON erhalten"}), 400
 
+    # Prüfen, ob alle nötigen Felder da sind
     required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
     missing = [k for k in required_keys if k not in data]
     if missing:
-        return jsonify({"error": f"Missing keys in JSON: {missing}"}), 400
+        return jsonify({"error": f"Fehlende Felder: {missing}"}), 400
 
     symbol = data["symbol"]
     side = data["side"].upper()
@@ -57,7 +59,7 @@ def webhook():
     try:
         resp_json = response.json()
     except:
-        resp_json = {"error": "Response is not JSON", "content": response.text}
+        resp_json = {"error": "Antwort kein JSON", "content": response.text}
 
     return jsonify({
         "status_code": response.status_code,
