@@ -82,27 +82,35 @@ def place_sell_limit_order(symbol, quantity, price, api_key, secret_key):
         "timestamp": timestamp,
         "timeInForce": "GTC"
     }
+    # Signatur berechnen, basierend auf sortiertem Query-String
     signature, query_string = generate_signature(params, secret_key)
-    params["signature"] = signature
+
+    # Signatur an den query_string anhängen (das ist der finale POST-Body)
+    body = query_string + f"&signature={signature}"
+
     headers = {
         "X-BX-APIKEY": api_key,
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    response = requests.post(url, headers=headers, data=params)
+    # POST mit dem exakten String senden (nicht als Dict)
+    response = requests.post(url, headers=headers, data=body)
+
     try:
         resp_json = response.json()
     except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
+
     debug_info = {
         "signature": signature,
         "query_string": query_string,
         "request_url": url,
         "request_headers": headers,
-        "request_params": params,
+        "request_body": body,
         "response_text": response.text,
         "response_status_code": response.status_code
     }
     return resp_json, debug_info
+
 
 
 def get_asset_balance(asset, api_key, secret_key):
