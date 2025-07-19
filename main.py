@@ -78,7 +78,7 @@ def place_sell_limit_order(symbol, quantity, price, api_key, secret_key):
         return {}
 
 def get_asset_balance(asset, api_key, secret_key):
-    path = "/openApi/spot/v1/account/assets"
+    path = "/openApi/spot/v1/account/balance"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
     params = {"timestamp": timestamp}
