@@ -193,11 +193,9 @@ def webhook():
         sell_limit_response = None
 
         if sell_limit_order is not None:
-           
-
-            # Coin aus Symbol extrahieren (z.B. BTCUSDT -> BTC)
-            if symbol.endswith("USDT"):
-                coin = symbol[:-4]
+            # Coin aus Symbol extrahieren (z.B. ONDO-USDT -> ONDO)
+            if "-" in symbol:
+                coin = symbol.split("-")[0]
             else:
                 coin = symbol
 
@@ -206,8 +204,9 @@ def webhook():
 
             if coin_amount > 0:
                 sell_limit_response = place_sell_limit_order(symbol, str(coin_amount), sell_limit_order, api_key, secret_key)
-            else:
+           else:
                 sell_limit_response = {"error": f"Keine verfügbare Menge von {coin} zum Verkauf gefunden."}
+
 
         return jsonify({
             "order_status_code": response.status_code,
