@@ -4,18 +4,9 @@ import hmac
 import hashlib
 import requests
 
-# JSON-Konfiguration im Code
-config_json = """
-{
-  "symbol": "NEXOUSDT",
-  "side": "BUY",
-  "usdt_amount": 1.5,
-  "BINGX_API_KEY": "xxxx",
-  "BINGX_SECRET_KEY": "yyyy"
-}
-"""
-
-config = json.loads(config_json)
+# Lade Konfiguration aus config.json
+with open("config.json", "r") as f:
+    config = json.load(f)
 
 symbol = config["symbol"]
 side = config["side"]
