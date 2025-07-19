@@ -15,7 +15,6 @@ FIREBASE_URL = os.getenv("FIREBASE_URL")  # Muss in Environment gesetzt sein
 def generate_signature(params: dict, secret: str):
     query_string = urlencode(sorted(params.items()))
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-    # Rückgabe von Signatur und Query-String zum Debuggen
     return signature, query_string
 
 
@@ -82,24 +81,17 @@ def place_sell_limit_order(symbol, quantity, price, api_key, secret_key):
         "timestamp": timestamp,
         "timeInForce": "GTC"
     }
-    # Signatur berechnen, basierend auf sortiertem Query-String
     signature, query_string = generate_signature(params, secret_key)
-
-    # Signatur an den query_string anhängen (das ist der finale POST-Body)
     body = query_string + f"&signature={signature}"
-
     headers = {
         "X-BX-APIKEY": api_key,
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    # POST mit dem exakten String senden (nicht als Dict)
     response = requests.post(url, headers=headers, data=body)
-
     try:
         resp_json = response.json()
     except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
-
     debug_info = {
         "signature": signature,
         "query_string": query_string,
@@ -110,7 +102,6 @@ def place_sell_limit_order(symbol, quantity, price, api_key, secret_key):
         "response_status_code": response.status_code
     }
     return resp_json, debug_info
-
 
 
 def get_asset_balance(asset, api_key, secret_key):
@@ -170,6 +161,17 @@ def get_asset_balance(asset, api_key, secret_key):
     return matched_amount, asset_list, raw_response, debug_info
 
 
+def delete_all_firebase_prices(symbol, firebase_secret):
+    if not FIREBASE_URL or not firebase_secret:
+        return None
+    firebase_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
+    response = requests.delete(firebase_path)
+    try:
+        return response.json()
+    except Exception:
+        return {"error": "Firebase delete Antwort kein JSON", "content": response.text}
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
@@ -190,7 +192,7 @@ def webhook():
     firebase_secret = data.get("firebase_secret")  # optional
     limit_sell_percent = data.get("limit_sell_percent")  # optional
 
-    # Market Kauf-Order
+    # 1. Market Kauf-Order ausführen
     path = "/openApi/spot/v1/trade/order"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
@@ -221,97 +223,79 @@ def webhook():
     avg_price = None
     sell_limit_order = None
 
+    cancel_responses = []
+    sell_limit_response = None
+    sell_limit_debug_info = None
+    firebase_response = None
+    firebase_resp_json = None
+    all_assets = []
+    asset_raw_response = {}
+    asset_debug_info = {}
+
     if response.status_code == 200:
-        firebase_response = None
-        firebase_resp_json = None
+        # Vor dem Setzen der Sell-Limit-Order alle offenen Sell-Limit-Orders für das Symbol abrufen und löschen
+        open_orders_resp, open_orders_debug = get_open_sell_limit_orders(symbol, api_key, secret_key)
+        open_orders = open_orders_resp.get("data", []) if open_orders_resp else []
 
-        # Firebase Eintrag hinzufügen, wenn Preis & Secret da sind
-        if firebase_secret and price is not None:
-            firebase_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
-            firebase_data = {"price": price}
-            firebase_response = requests.post(firebase_path, json=firebase_data)
+        for order in open_orders:
+            if order.get("side") == "SELL" and order.get("type") == "LIMIT" and order.get("symbol") == symbol:
+                cancel_resp, cancel_debug = cancel_order(order.get("orderId"), symbol, api_key, secret_key)
+                cancel_responses.append({"orderId": order.get("orderId"), "cancel_response": cancel_resp})
+
+        # Firebase: Prüfen ob noch offene Sell-Limit-Orders existieren
+        # (Nach Löschung sind alle gelöscht, aber sicherheitshalber nochmal prüfen)
+        open_orders_resp_after_cancel, _ = get_open_sell_limit_orders(symbol, api_key, secret_key)
+        open_orders_after_cancel = open_orders_resp_after_cancel.get("data", []) if open_orders_resp_after_cancel else []
+
+        sell_limit_exists = any(
+            o.get("side") == "SELL" and o.get("type") == "LIMIT" and o.get("symbol") == symbol
+            for o in open_orders_after_cancel
+        )
+
+        # Falls keine Sell-Limit-Orders existieren, Firebase löschen
+        if not sell_limit_exists and firebase_secret:
+            firebase_response = delete_all_firebase_prices(symbol, firebase_secret)
+
+        # Nun Sell-Limit-Order setzen, falls angegeben
+        if limit_sell_percent:
             try:
-                firebase_resp_json = firebase_response.json()
+                limit_sell_percent = float(limit_sell_percent)
             except Exception:
-                firebase_resp_json = {"error": "Firebase Antwort kein JSON", "content": firebase_response.text}
+                limit_sell_percent = None
 
-            # Alle Preise abrufen, Durchschnitt berechnen
-            get_prices_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
-            get_response = requests.get(get_prices_path)
-            try:
-                all_prices_data = get_response.json()
-            except Exception:
-                all_prices_data = {}
+        if limit_sell_percent is not None and float(amount) > 0:
+            # Asset Balance abfragen, um Menge zu ermitteln
+            # Dazu nehmen wir z.B. symbol="ONDOUSDT" -> Asset "ONDO"
+            asset = symbol[:-4] if symbol.endswith("USDT") else symbol  # Annahme USDT als Quote
+            asset_balance, all_assets, asset_raw_response, asset_debug_info = get_asset_balance(asset, api_key, secret_key)
+            if asset_balance > 0:
+                # Preis für Limit Sell berechnen
+                avg_price = None
+                if "avgPrice" in resp_json:
+                    try:
+                        avg_price = float(resp_json["avgPrice"])
+                    except:
+                        avg_price = None
+                if not avg_price:
+                    # Falls nicht im Kauf-Response vorhanden, benutze price aus Request falls vorhanden
+                    avg_price = float(price) if price else None
 
-            prices_list = []
-            if isinstance(all_prices_data, dict):
-                for val in all_prices_data.values():
-                    if isinstance(val, dict) and "price" in val:
-                        try:
-                            prices_list.append(float(val["price"]))
-                        except (ValueError, TypeError):
-                            pass
+                if avg_price:
+                    sell_price = avg_price * (1 + limit_sell_percent / 100)
+                    sell_limit_response, sell_limit_debug_info = place_sell_limit_order(symbol, asset_balance, sell_price, api_key, secret_key)
 
-            if prices_list:
-                avg_price = sum(prices_list) / len(prices_list)
-
-        # Sell-Limit-Preis berechnen
-        if avg_price is not None and limit_sell_percent is not None:
-            try:
-                percent = float(limit_sell_percent)
-                sell_limit_order = avg_price * (1 + percent / 100)
-            except (ValueError, TypeError):
-                sell_limit_order = None
-
-        cancel_responses = []
-        sell_limit_response = None
-        sell_limit_debug_info = None
-
-        if sell_limit_order is not None:
-            # Coin aus Symbol extrahieren (funktioniert auch bei "ONDOUSDT", "ONDO-USDT", etc.)
-            coin = symbol.replace("USDT", "").replace("-", "").replace("/", "")
-
-            # Verfügbare Menge des Coins abfragen
-            coin_amount, all_assets, asset_raw_response, asset_debug_info = get_asset_balance(coin, api_key, secret_key)
-
-            if coin_amount > 0:
-                sell_limit_response, sell_limit_debug_info = place_sell_limit_order(symbol, str(coin_amount), sell_limit_order, api_key, secret_key)
-            else:
-                sell_limit_response = {"error": f"Keine verfügbare Menge von {coin} zum Verkauf gefunden."}
-
-        return jsonify({
-            "order_status_code": response.status_code,
-            "order_response": resp_json,
-            "order_signature_debug": {
-                "signature": signature,
-                "query_string": query_string,
-                "request_params": params,
-                "request_url": url,
-                "request_headers": headers,
-                "response_text": response.text,
-                "response_status_code": response.status_code,
-            },
-            "firebase_status_code": firebase_response.status_code if firebase_response else None,
-            "firebase_response": firebase_resp_json,
-            "average_price": avg_price,
-            "sell_limit_order": sell_limit_order,
-            "cancel_sell_limit_orders_response": cancel_responses,
-            "sell_limit_order_response": sell_limit_response,
-            "sell_limit_order_debug": sell_limit_debug_info,
-            "available_assets": all_assets,
-            "asset_api_raw_response": asset_raw_response,
-            "asset_api_debug_info": asset_debug_info
-        })
-
-    else:
-        return jsonify({
-            "order_status_code": response.status_code,
-            "order_response": resp_json,
-            "message": "Order fehlgeschlagen, Firebase Update nicht ausgeführt.",
-            "average_price": None,
-            "sell_limit_order": None
-        }), 400
+    return jsonify({
+        "market_order_response": resp_json,
+        "cancel_responses": cancel_responses,
+        "sell_limit_order_response": sell_limit_response,
+        "sell_limit_debug": sell_limit_debug_info,
+        "firebase_delete_response": firebase_response,
+        "asset_balance": asset_balance if 'asset_balance' in locals() else None,
+        "all_assets": all_assets,
+        "asset_raw_response": asset_raw_response,
+        "asset_debug_info": asset_debug_info
+    })
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
