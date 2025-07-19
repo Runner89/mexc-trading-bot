@@ -103,7 +103,7 @@ def get_asset_balance(asset, api_key, secret_key):
 
     try:
          data = raw_response
-        if "data" in data and "balances" in data["data"] and isinstance(data["data"]["balances"], list):
+         if "data" in data and "balances" in data["data"] and isinstance(data["data"]["balances"], list):
             for asset_info in data["data"]["balances"]:
                 name = asset_info.get("asset")
                 available = asset_info.get("free")  # 'free' ist verfügbar, nicht 'available'
