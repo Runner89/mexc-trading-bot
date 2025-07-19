@@ -237,7 +237,8 @@ def webhook():
         "sell_limit_order_debug": sell_limit_debug_info,
         "available_assets": all_assets,
         "asset_api_raw_response": asset_raw_response,
-        "asset_api_debug_info": asset_debug_info
+        "asset_api_debug_info": asset_debug_info,
+        "existing_sell_limit_orders": existing_sell_limit_orders
     })
 
 if __name__ == "__main__":
