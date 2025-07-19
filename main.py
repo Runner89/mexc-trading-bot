@@ -86,18 +86,39 @@ def delete_open_limit_sell_orders(symbol, api_key, secret_key):
                 print(f"Fehler beim Löschen der Order {order_id}: {del_res.text}")
     return True
 
-def create_market_order(symbol, side, quantity, api_key, secret_key):
-    timestamp = int(time.time() * 1000)
-    query = f"symbol={symbol}&side={side}&type=MARKET&quantity={quantity}&timestamp={timestamp}"
-    signature = sign_request(query, secret_key)
-    url = f"https://api.bingx.com/api/v1/order?{query}&signature={signature}"
-    headers = {"X-BINGX-APIKEY": api_key}
-    res = requests.post(url, headers=headers)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        print(f"Fehler beim Erstellen der Marktorder: {res.text}")
-        return None
+def create_market_order(symbol, quantity, api_key, secret_key):
+    url = "https://open-api.bingx.com/openApi/spot/v1/trade/order"
+    timestamp = str(int(time.time() * 1000))
+
+    params = {
+        "symbol": symbol,
+        "side": "BUY",
+        "type": "MARKET",
+        "quantity": quantity,
+        "timestamp": timestamp
+    }
+
+    # Signatur generieren
+    signature = generate_signature(params, secret_key)
+    params["signature"] = signature
+
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=params)
+        response_json = response.json()
+        print("DEBUG: Marktorder API Response:", response_json)
+        return response_json
+    except Exception as e:
+        print(f"Fehler bei create_market_order(): {e}")
+        return {
+            "code": -1,
+            "msg": str(e)
+        }
+
 
 def create_limit_sell_order(symbol, quantity, price, api_key, secret_key):
     timestamp = int(time.time() * 1000)
@@ -194,7 +215,7 @@ def webhook():
         if quantity <= 0:
             return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
         
-        order_response = create_market_order(symbol, action, quantity, api_key, secret_key)
+        order_response = create_market_order(symbol, quantity, api_key, secret_key)
         if not order_response:
             return jsonify({"error": "Marktorder konnte nicht erstellt werden", **debug_info}), 500
 
