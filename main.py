@@ -1,18 +1,10 @@
-import json
+from flask import Flask, request, jsonify
 import time
 import hmac
 import hashlib
 import requests
 
-# Lade Konfiguration aus config.json
-with open("config.json", "r") as f:
-    config = json.load(f)
-
-symbol = config["symbol"]
-side = config["side"]
-amount = config["usdt_amount"]
-api_key = config["BINGX_API_KEY"]
-secret_key = config["BINGX_SECRET_KEY"]
+app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 
@@ -20,7 +12,22 @@ def generate_signature(params: dict, secret: str) -> str:
     query_string = '&'.join(f"{key}={params[key]}" for key in sorted(params))
     return hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
-def place_order():
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    if not data:
+        return jsonify({"error": "No JSON received"}), 400
+
+    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
+    if not all(k in data for k in required_keys):
+        return jsonify({"error": f"Missing one of required keys: {required_keys}"}), 400
+
+    symbol = data["symbol"]
+    side = data["side"]
+    amount = data["usdt_amount"]
+    api_key = data["BINGX_API_KEY"]
+    secret_key = data["BINGX_SECRET_KEY"]
+
     path = "/openApi/spot/v1/trade/order"
     url = BASE_URL + path
     timestamp = str(int(time.time() * 1000))
@@ -41,8 +48,12 @@ def place_order():
     }
 
     response = requests.post(url, headers=headers, data=params)
-    print("Status:", response.status_code)
-    print("Response:", response.json())
+
+    return jsonify({
+        "status_code": response.status_code,
+        "response": response.json()
+    })
 
 if __name__ == "__main__":
-    place_order()
+    # Starte den Webserver auf Port 5000
+    app.run(host="0.0.0.0", port=5000)
