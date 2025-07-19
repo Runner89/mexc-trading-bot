@@ -1,19 +1,17 @@
-#USDT Spot Kauf wird in erstellt, BINGX API + Secret Key werden mit JSON gesendet
-
-
 from flask import Flask, request, jsonify
 import time
 import hmac
 import hashlib
 import requests
 from urllib.parse import urlencode
+import os
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
+FIREBASE_URL = os.getenv("FIREBASE_URL")  # Firebase URL aus der Environment Variable
 
 def generate_signature(params: dict, secret: str) -> str:
-    # URL-kodierter Query-String, sortiert nach Keys
     query_string = urlencode(sorted(params.items()))
     print("Query String for signature:", query_string)
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
@@ -26,17 +24,20 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
+    required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY", "price", "firebase_secret"]
     missing = [k for k in required_keys if k not in data]
     if missing:
         return jsonify({"error": f"Fehlende Felder: {missing}"}), 400
 
     symbol = data["symbol"]
     side = data["side"].upper()
-    amount = str(data["usdt_amount"])  # Wichtig: als String
+    amount = str(data["usdt_amount"])
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
+    price = data["price"]
+    firebase_secret = data["firebase_secret"]
 
+    # BingX Order erstellen
     path = "/openApi/spot/v1/trade/order"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
@@ -64,10 +65,33 @@ def webhook():
     except Exception:
         resp_json = {"error": "Antwort kein JSON", "content": response.text}
 
-    return jsonify({
-        "status_code": response.status_code,
-        "response": resp_json
-    })
+    # Wenn Bestellung erfolgreich, dann Preis zu Firebase hinzufügen
+    if response.status_code == 200:
+        firebase_path = f"{FIREBASE_URL}/kaufpreise/{symbol}.json?auth={firebase_secret}"
+        firebase_data = {
+            "price": price
+        }
+
+        firebase_response = requests.post(firebase_path, json=firebase_data)
+        try:
+            firebase_resp_json = firebase_response.json()
+        except Exception:
+            firebase_resp_json = {"error": "Firebase Antwort kein JSON", "content": firebase_response.text}
+
+        return jsonify({
+            "order_status_code": response.status_code,
+            "order_response": resp_json,
+            "firebase_status_code": firebase_response.status_code,
+            "firebase_response": firebase_resp_json
+        })
+
+    else:
+        return jsonify({
+            "order_status_code": response.status_code,
+            "order_response": resp_json,
+            "message": "Order fehlgeschlagen, Firebase Update nicht ausgeführt."
+        }), 400
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
