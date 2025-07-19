@@ -3,13 +3,14 @@ import time
 import hmac
 import hashlib
 import requests
+from urllib.parse import quote_plus
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 
 def generate_signature(params: dict, secret: str) -> str:
-    query_string = '&'.join(f"{key}={params[key]}" for key in sorted(params))
+    query_string = '&'.join(f"{key}={quote_plus(str(params[key]))}" for key in sorted(params))
     print("Query String for signature:", query_string)
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     print("Generated signature:", signature)
@@ -27,8 +28,8 @@ def webhook():
         return jsonify({"error": f"Missing keys in JSON: {missing}"}), 400
 
     symbol = data["symbol"]
-    side = data["side"].upper()  # Großbuchstaben wie "BUY"
-    amount = data["usdt_amount"]
+    side = data["side"].upper()
+    amount = str(data["usdt_amount"])  # als String
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
 
@@ -40,7 +41,7 @@ def webhook():
         "symbol": symbol,
         "side": side,
         "type": "MARKET",
-        "quoteOrderQty": str(amount),  # als String
+        "quoteOrderQty": amount,
         "timestamp": timestamp
     }
 
@@ -51,16 +52,12 @@ def webhook():
         "X-BX-APIKEY": api_key
     }
 
-    print("Sending POST request to BingX API...")
     response = requests.post(url, headers=headers, data=params)
 
-    print("Status:", response.status_code)
     try:
         resp_json = response.json()
-        print("Response JSON:", resp_json)
-    except Exception as e:
-        resp_json = {"error": "Could not decode JSON from response"}
-        print("Response content:", response.text)
+    except:
+        resp_json = {"error": "Response is not JSON", "content": response.text}
 
     return jsonify({
         "status_code": response.status_code,
