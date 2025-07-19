@@ -204,8 +204,9 @@ def webhook():
 
             if coin_amount > 0:
                 sell_limit_response = place_sell_limit_order(symbol, str(coin_amount), sell_limit_order, api_key, secret_key)
-           else:
+            else:
                 sell_limit_response = {"error": f"Keine verfügbare Menge von {coin} zum Verkauf gefunden."}
+
 
 
         return jsonify({
