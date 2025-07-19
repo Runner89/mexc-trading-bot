@@ -10,20 +10,24 @@ BASE_URL = "https://open-api.bingx.com"
 
 def generate_signature(params: dict, secret: str) -> str:
     query_string = '&'.join(f"{key}={params[key]}" for key in sorted(params))
-    return hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    print("Query String for signature:", query_string)
+    signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    print("Generated signature:", signature)
+    return signature
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
     if not data:
-        return jsonify({"error": "No JSON received"}), 400
+        return jsonify({"error": "No JSON payload received"}), 400
 
     required_keys = ["symbol", "side", "usdt_amount", "BINGX_API_KEY", "BINGX_SECRET_KEY"]
-    if not all(k in data for k in required_keys):
-        return jsonify({"error": f"Missing one of required keys: {required_keys}"}), 400
+    missing = [k for k in required_keys if k not in data]
+    if missing:
+        return jsonify({"error": f"Missing keys in JSON: {missing}"}), 400
 
     symbol = data["symbol"]
-    side = data["side"]
+    side = data["side"].upper()  # Großbuchstaben wie "BUY"
     amount = data["usdt_amount"]
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
@@ -36,7 +40,7 @@ def webhook():
         "symbol": symbol,
         "side": side,
         "type": "MARKET",
-        "quoteOrderQty": amount,
+        "quoteOrderQty": str(amount),  # als String
         "timestamp": timestamp
     }
 
@@ -47,13 +51,21 @@ def webhook():
         "X-BX-APIKEY": api_key
     }
 
+    print("Sending POST request to BingX API...")
     response = requests.post(url, headers=headers, data=params)
+
+    print("Status:", response.status_code)
+    try:
+        resp_json = response.json()
+        print("Response JSON:", resp_json)
+    except Exception as e:
+        resp_json = {"error": "Could not decode JSON from response"}
+        print("Response content:", response.text)
 
     return jsonify({
         "status_code": response.status_code,
-        "response": response.json()
+        "response": resp_json
     })
 
 if __name__ == "__main__":
-    # Starte den Webserver auf Port 5000
     app.run(host="0.0.0.0", port=5000)
