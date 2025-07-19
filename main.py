@@ -9,6 +9,17 @@ from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
+BASE_URL = "https://open-api.bingx.com"
+
+def generate_signature(params: dict, secret: str) -> str:
+    # URL-kodierter Query-String, sortiert nach Keys
+    query_string = urlencode(sorted(params.items()))
+    print("Query String for signature:", query_string)
+    signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    print("Generated signature:", signature)
+    return signature
+
+
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
 # --- Firebase Funktionen ---
