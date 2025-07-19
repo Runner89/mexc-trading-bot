@@ -85,33 +85,51 @@ def get_asset_balance(asset, api_key, secret_key):
     signature = generate_signature(params, secret_key)
     params["signature"] = signature
     headers = {"X-BX-APIKEY": api_key}
-    
-    response = requests.get(url, headers=headers, params=params)
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        resp_url = response.url
+        resp_text = response.text
+        raw_response = response.json()
+    except Exception as e:
+        return 0.0, [], {}, {
+            "error": f"Fehler beim Request oder Parsen: {e}",
+            "response_url": resp_url if 'resp_url' in locals() else None,
+            "response_text": resp_text if 'resp_text' in locals() else None,
+        }
 
     asset_list = []
     matched_amount = 0.0
-    raw_response = {}
 
     try:
-        raw_response = response.json()
         data = raw_response
         if "data" in data and isinstance(data["data"], list):
-            print(f"[DEBUG] Suche nach Asset '{asset}'")
-            print("[DEBUG] Antwort von BingX:")
             for asset_info in data["data"]:
                 name = asset_info.get("asset")
                 available = asset_info.get("available")
-                print(f"  {name}: {available}")
-                asset_list.append({ "asset": name, "available": available })
+                asset_list.append({"asset": name, "available": available})
                 if name == asset:
                     try:
                         matched_amount = float(available)
                     except:
                         matched_amount = 0.0
     except Exception as e:
-        print("[ERROR] Fehler beim Parsen von Asset-Daten:", e)
+        return 0.0, [], raw_response, {
+            "error": f"Fehler beim Verarbeiten der Antwort: {e}",
+            "response_url": resp_url,
+            "response_text": resp_text,
+        }
 
-    return matched_amount, asset_list, raw_response
+    debug_info = {
+        "request_url": url,
+        "request_headers": headers,
+        "request_params": params,
+        "response_url": resp_url,
+        "response_text": resp_text
+    }
+
+    return matched_amount, asset_list, raw_response, debug_info
+
 
 
 
@@ -218,7 +236,8 @@ def webhook():
 
 
             # Verfügbare Menge des Coins abfragen
-            coin_amount, all_assets, asset_raw_response = get_asset_balance(coin, api_key, secret_key)
+            coin_amount, all_assets, asset_raw_response, asset_debug_info = get_asset_balance(coin, api_key, secret_key)
+
 
 
 
@@ -238,8 +257,10 @@ def webhook():
             "sell_limit_order": sell_limit_order,
             "cancel_sell_limit_orders_response": cancel_responses,
             "sell_limit_order_response": sell_limit_response,
-            "available_assets": all_assets,   # <--- Hier!
-            "asset_api_raw_response": asset_raw_response
+            "available_assets": all_assets,
+            "asset_api_raw_response": asset_raw_response,
+            "asset_api_debug_info": asset_debug_info
+            
         })
 
     else:
