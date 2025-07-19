@@ -216,6 +216,8 @@ def webhook():
             return jsonify({"error": "Berechnete Menge ist 0 oder ungültig", **debug_info}), 400
         
         order_response = create_market_order(symbol, quantity, api_key, secret_key)
+        print("DEBUG: order_response =", order_response)
+
         if not order_response:
             return jsonify({"error": "Marktorder konnte nicht erstellt werden", **debug_info}), 500
 
