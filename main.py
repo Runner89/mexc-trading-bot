@@ -102,11 +102,11 @@ def get_asset_balance(asset, api_key, secret_key):
     matched_amount = 0.0
 
     try:
-        data = raw_response
-        if "data" in data and isinstance(data["data"], list):
-            for asset_info in data["data"]:
+         data = raw_response
+        if "data" in data and "balances" in data["data"] and isinstance(data["data"]["balances"], list):
+            for asset_info in data["data"]["balances"]:
                 name = asset_info.get("asset")
-                available = asset_info.get("available")
+                available = asset_info.get("free")  # 'free' ist verfügbar, nicht 'available'
                 asset_list.append({"asset": name, "available": available})
                 if name == asset:
                     try:
