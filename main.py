@@ -4,8 +4,8 @@ import hashlib
 import requests
 import json
 
-API_KEY = "dein_api_key"
-API_SECRET = "dein_api_secret"
+API_KEY = "AgKYtJTXgLDM7ZsiwaIUoJSUyrVXLjqkmFzLTfmCsau00nW1A6RQWddZQOOeAOzmcpDQ9zowa0BT8dG6BQ"
+API_SECRET = "YyxO6LVeivvtYIzcIe9c8XWbedyzBWqIYgZdv8suYWWEAxVygafnsRYBqzImu0WMiZ4bxmxuih6Sf56Pn8bwQ"
 
 BASE_URL = "https://open-api.bingx.com"
 ENDPOINT = "/openApi/swap/v2/user/balance"
