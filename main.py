@@ -111,7 +111,7 @@ def place_swap_limit_close_order(symbol, quantity, price, api_key, secret_key):
 
 
 def cancel_all_swap_orders(symbol, api_key, secret_key):
-    path = "/openApi/swap/v2/trade/cancelAll"
+    path = "/openApi/swap/v2/trade/order/cancelAll"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
     params = {"symbol": symbol, "timestamp": timestamp}
