@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
-ORDER_ENDPOINT = "/openApi/swap/v2/order"  # ✅ KORRIGIERT
+ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"  # ✅ KORRIGIERT
 PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
 
 def generate_signature(secret_key: str, params: str) -> str:
