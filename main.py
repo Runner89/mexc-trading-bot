@@ -37,22 +37,29 @@ def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: 
     if price is None:
         return {"code": 99999, "msg": "Failed to get current price"}
 
-    quantity = round(usdt_amount / price, 6)  # Menge des Coins berechnen
+    quantity = round(usdt_amount / price, 6)
 
     timestamp = int(time.time() * 1000)
-    params = (
-        f"symbol={symbol}&side=BUY&type=MARKET&quantity={quantity}"
-        f"&positionSide={position_side}&timestamp={timestamp}"
-    )
-    signature = generate_signature(secret_key, params)
-    full_params = params + f"&signature={signature}"
+    params_dict = {
+        "symbol": symbol,
+        "side": "BUY",
+        "type": "MARKET",
+        "quantity": quantity,
+        "positionSide": position_side,
+        "timestamp": timestamp
+    }
+
+    # Signatur String aus Params erstellen (alphabetisch sortiert)
+    sign_str = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, sign_str)
+    params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {
         "X-BX-APIKEY": api_key,
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    response = requests.post(url, headers=headers, data=full_params)
+    response = requests.post(url, headers=headers, data=params_dict)
     return response.json()
 
 @app.route('/webhook', methods=['POST'])
