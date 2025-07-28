@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
-ORDER_ENDPOINT = "/openApi/swap/v2/order"
+ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"  # Korrigiert!
 
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode(), params.encode(), hashlib.sha256).hexdigest()
@@ -24,12 +24,16 @@ def get_futures_balance(api_key: str, secret_key: str):
 
 def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: str, position_side: str = "LONG"):
     timestamp = int(time.time() * 1000)
-    # Wichtig: quoteOrderQty = USDT-Betrag, positionSide wird benötigt
+    # Parameter müssen URL-encoded sein, aber wir senden hier als POST x-www-form-urlencoded
     params = f"symbol={symbol}&side=BUY&type=MARKET&quoteOrderQty={usdt_amount}&positionSide={position_side}&timestamp={timestamp}"
     signature = generate_signature(secret_key, params)
-    url = f"{BASE_URL}{ORDER_ENDPOINT}?{params}&signature={signature}"
-    headers = {"X-BX-APIKEY": api_key}
-    response = requests.post(url, headers=headers)
+    full_params = params + f"&signature={signature}"
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    response = requests.post(url, headers=headers, data=full_params)
     return response.json()
 
 @app.route('/webhook', methods=['POST'])
