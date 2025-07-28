@@ -13,9 +13,11 @@ FIREBASE_URL = os.getenv("FIREBASE_URL")
 
 
 def generate_signature(params: dict, secret: str):
-    query_string = urlencode(sorted(params.items()))
+    params_to_sign = {k: v for k, v in params.items() if k != "sign"}
+    query_string = urlencode(sorted(params_to_sign.items()))
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-    return signature, query_string
+    return signature
+
 
 
 def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
@@ -44,7 +46,8 @@ def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
     headers = {
         "X-BX-APIKEY": api_key,
         "Content-Type": "application/x-www-form-urlencoded"
-    }
+}
+
 
     body = urlencode(params)
     response = requests.post(url, headers=headers, data=body)
