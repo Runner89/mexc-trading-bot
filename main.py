@@ -1,17 +1,18 @@
+from flask import Flask, request, jsonify
 import time
 import hmac
 import hashlib
 import requests
-from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
-ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"  # Korrigiert!
+ORDER_ENDPOINT = "/openApi/swap/v2/order"
+PRICE_ENDPOINT = "/openApi/spot/v1/market/ticker"  # Für Preisabruf
 
 def generate_signature(secret_key: str, params: str) -> str:
-    return hmac.new(secret_key.encode(), params.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
 
 def get_futures_balance(api_key: str, secret_key: str):
     timestamp = int(time.time() * 1000)
@@ -22,12 +23,31 @@ def get_futures_balance(api_key: str, secret_key: str):
     response = requests.get(url, headers=headers)
     return response.json()
 
-def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: str, position_side: str = "LONG"):
+def get_current_price(symbol: str):
+    # Beachte: Für Futures Symbol = z.B. "BTC-USDT"
+    url = f"{BASE_URL}{PRICE_ENDPOINT}?symbol={symbol}"
+    response = requests.get(url)
+    data = response.json()
+    if data.get("code") == 0:
+        return float(data["data"]["lastPrice"])
+    else:
+        return None
+
+def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: float, position_side: str = "LONG"):
+    price = get_current_price(symbol)
+    if price is None:
+        return {"code": 99999, "msg": "Failed to get current price"}
+
+    quantity = round(usdt_amount / price, 6)  # Menge des Coins berechnen
+
     timestamp = int(time.time() * 1000)
-    # Parameter müssen URL-encoded sein, aber wir senden hier als POST x-www-form-urlencoded
-    params = f"symbol={symbol}&side=BUY&type=MARKET&quoteOrderQty={usdt_amount}&positionSide={position_side}&timestamp={timestamp}"
+    params = (
+        f"symbol={symbol}&side=BUY&type=MARKET&quantity={quantity}"
+        f"&positionSide={position_side}&timestamp={timestamp}"
+    )
     signature = generate_signature(secret_key, params)
     full_params = params + f"&signature={signature}"
+
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {
         "X-BX-APIKEY": api_key,
@@ -39,39 +59,32 @@ def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
-
-    if not api_key or not secret_key:
-        return jsonify({"error": True, "message": "api_key and secret_key are required"}), 400
-
-    # Futures Balance abrufen
-    balance_response = get_futures_balance(api_key, secret_key)
-    available_balances = {}
-    if balance_response.get("code") == 0:
-        balance_data = balance_response.get("data", {})
-        balance_info = balance_data.get("balance", {})
-        asset = balance_info.get("asset")
-        available = balance_info.get("availableMargin")
-        available_balances[asset] = available
-    else:
-        return jsonify({"error": True, "message": balance_response.get("msg", "Failed to get balance")})
-
-    # Market Order falls mitgesendet
-    symbol = data.get("symbol")
+    symbol = data.get("symbol", "BTC-USDT")
     usdt_amount = data.get("usdt_amount")
-    position_side = data.get("positionSide", "LONG")
+    position_side = data.get("position_side", "LONG")  # optional
 
-    order_result = None
-    if symbol and usdt_amount:
-        order_result = place_market_order(api_key, secret_key, symbol, str(usdt_amount), position_side)
+    if not api_key or not secret_key or not usdt_amount:
+        return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
+    # 1. Balance abrufen
+    balance_response = get_futures_balance(api_key, secret_key)
+
+    # 2. Market Order platzieren
+    order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
+
+    # Antwort zusammenbauen
     return jsonify({
         "error": False,
-        "available_balances": available_balances,
-        "order_result": order_result or "No order placed"
+        "available_balances": balance_response.get("data", {}).get("balance", {}),
+        "order_result": order_response,
+        "order_params": {
+            "symbol": symbol,
+            "usdt_amount": usdt_amount,
+            "position_side": position_side
+        }
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
