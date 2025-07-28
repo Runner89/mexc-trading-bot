@@ -2,12 +2,13 @@ from flask import Flask, request, jsonify
 import time
 import hmac
 import hashlib
-import requests
 from urllib.parse import urlencode
+import requests
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
+FUTURES_PATH = "/futuresApi/v1/order/placeOrder"
 
 def generate_signature(params: dict, secret: str):
     query_string = urlencode(sorted(params.items()))
@@ -15,17 +16,18 @@ def generate_signature(params: dict, secret: str):
     return signature
 
 def place_futures_market_order(symbol, side, quantity, api_key, secret_key):
-    path = "/futuresApi/v1/order/placeOrder"  # Pfad für Futures Order (bitte bei BingX-Doku prüfen)
-    url = BASE_URL + path
+    url = BASE_URL + FUTURES_PATH
     timestamp = int(time.time() * 1000)
 
     params = {
         "symbol": symbol,
-        "side": side,       # "BUY" oder "SELL"
-        "type": "MARKET",   # Market Order
+        "side": side,          # "BUY" or "SELL"
+        "type": "MARKET",
         "quantity": quantity,
         "timestamp": timestamp
     }
+
+    # Signatur mit sortierten params
     signature = generate_signature(params, secret_key)
     params["signature"] = signature
 
@@ -34,6 +36,7 @@ def place_futures_market_order(symbol, side, quantity, api_key, secret_key):
         "Content-Type": "application/x-www-form-urlencoded"
     }
 
+    # POST-Request mit form-data
     response = requests.post(url, headers=headers, data=params)
     try:
         return response.json(), response.status_code
@@ -46,9 +49,9 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    symbol = data.get("symbol", "").upper()        # z.B. "BTCUSDTM"
-    side = data.get("side", "").upper()            # "BUY"
-    quantity = data.get("quantity")                 # z.B. "0.01"
+    symbol = data.get("symbol", "").upper()
+    side = data.get("side", "").upper()
+    quantity = data.get("quantity")
     api_key = data.get("BINGX_API_KEY")
     secret_key = data.get("BINGX_SECRET_KEY")
 
