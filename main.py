@@ -16,99 +16,98 @@ def generate_signature(params: dict, secret: str):
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     return signature, query_string
 
-def place_futures_market_order(symbol, side, quantity, api_key, secret_key):
-    path = "/openApi/futures/v1/contract/order"
+def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
+    path = "/openApi/swap/v2/trade/order"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
 
+    swap_side = "OPEN_LONG" if side == "BUY" else "OPEN_SHORT"
+
     params = {
         "symbol": symbol,
-        "price": "0",  # Marktorder
+        "side": swap_side,
+        "type": "MARKET",
+        "price": "",  # leer für Market
         "vol": str(quantity),
-        "side": 1 if side == "BUY" else 2,
-        "type": 2,  # 2 = Market
-        "open_type": 1,  # 1 = isolated
-        "position_id": 0,
-        "leverage": 1,
-        "external_oid": f"oid_{timestamp}",
-        "position_mode": 1,
+        "leverage": "1",
         "timestamp": timestamp
     }
 
     signature, query_string = generate_signature(params, secret_key)
     params["sign"] = signature
-    headers = {"X-BX-APIKEY": api_key}
+
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
     response = requests.post(url, headers=headers, data=params)
     try:
         return response.json(), params, response.text
-    except Exception:
+    except:
         return {"error": "Antwort kein JSON"}, params, response.text
 
-def cancel_all_futures_orders(symbol, api_key, secret_key):
-    path = "/openApi/futures/v1/contract/cancel-all"
+def cancel_all_swap_orders(symbol, api_key, secret_key):
+    path = "/openApi/swap/v2/trade/allOpenOrders"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
+
     params = {
         "symbol": symbol,
         "timestamp": timestamp
     }
-    signature, query_string = generate_signature(params, secret_key)
+
+    signature, _ = generate_signature(params, secret_key)
     params["sign"] = signature
     headers = {"X-BX-APIKEY": api_key}
+
     response = requests.post(url, headers=headers, data=params)
     try:
         return response.json()
     except:
-        return {"error": "Fehler beim Stornieren"}
+        return {"error": "Fehler beim Löschen offener Orders"}
 
-def place_futures_limit_order(symbol, side, quantity, price, api_key, secret_key):
-    path = "/openApi/futures/v1/contract/order"
+def place_swap_limit_close_order(symbol, side, quantity, price, api_key, secret_key):
+    path = "/openApi/swap/v2/trade/order"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
 
+    close_side = "CLOSE_LONG" if side == "BUY" else "CLOSE_SHORT"
+
     params = {
         "symbol": symbol,
+        "side": close_side,
+        "type": "LIMIT",
         "price": str(price),
         "vol": str(quantity),
-        "side": side,  # 3 = Buy Close Short, 4 = Sell Close Long
-        "type": 1,  # 1 = Limit
-        "open_type": 1,
-        "position_id": 0,
-        "leverage": 1,
-        "external_oid": f"limit_{timestamp}",
-        "position_mode": 1,
+        "leverage": "1",
         "timestamp": timestamp
     }
 
-    signature, query_string = generate_signature(params, secret_key)
+    signature, _ = generate_signature(params, secret_key)
     params["sign"] = signature
-    headers = {"X-BX-APIKEY": api_key}
+
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/x-www-form-urlencoded"}
     response = requests.post(url, headers=headers, data=params)
     try:
         return response.json(), params, response.text
     except:
         return {"error": "Limit Order fehlgeschlagen"}, params, response.text
 
-def get_futures_position(symbol, api_key, secret_key):
-    path = "/openApi/futures/v1/contract/positions"
+def get_swap_position(symbol, api_key, secret_key):
+    path = "/openApi/swap/v2/user/positions"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
-
-    params = {
-        "symbol": symbol,
-        "timestamp": timestamp
-    }
-    signature, query_string = generate_signature(params, secret_key)
+    params = {"timestamp": timestamp}
+    signature, _ = generate_signature(params, secret_key)
     params["sign"] = signature
     headers = {"X-BX-APIKEY": api_key}
-
-    response = requests.get(url, headers=headers, params=params)
     try:
-        raw = response.json()
-        positions = raw.get("data", [])
-        for pos in positions:
+        response = requests.get(url, headers=headers, params=params)
+        data = response.json().get("data", [])
+        for pos in data:
             if pos.get("symbol") == symbol:
-                return float(pos.get("availableVol", 0)), raw
+                return float(pos.get("positionAmount", 0)), data
     except:
         return 0.0, {}
     return 0.0, {}
@@ -119,59 +118,61 @@ def webhook():
     if not data:
         return jsonify({"error": "Kein JSON erhalten"}), 400
 
-    symbol_raw = data["symbol"].upper()
+    symbol = data["symbol"].upper()
     side = data["side"].upper()
     usdt_amount = float(data["usdt_amount"])
     api_key = data["BINGX_API_KEY"]
     secret_key = data["BINGX_SECRET_KEY"]
-    price = float(data.get("price", 0))
+    entry_price = float(data.get("price", 0))
     firebase_secret = data.get("firebase_secret")
-    limit_sell_percent = float(data.get("limit_sell_percent", 0))
+    limit_percent = float(data.get("limit_sell_percent", 0))
 
-    qty = usdt_amount / price if price else 0
+    quantity = round(usdt_amount / entry_price, 6) if entry_price > 0 else 0
 
-    market_order_resp, market_params, market_text = place_futures_market_order(
-        symbol_raw, side, qty, api_key, secret_key
+    # 1. Market Entry
+    market_resp, market_params, market_raw = place_swap_market_order(
+        symbol, side, quantity, api_key, secret_key
     )
 
-    avg_price = price
+    # 2. Firebase
     firebase_resp = {}
-    firebase_write = {}
-
-    if firebase_secret and price > 0:
-        fb_path = f"{FIREBASE_URL}/futures/{symbol_raw}.json?auth={firebase_secret}"
-        firebase_write = requests.post(fb_path, json={"price": price})
+    if firebase_secret and entry_price > 0:
+        firebase_url = f"{FIREBASE_URL}/futures/{symbol}.json?auth={firebase_secret}"
+        firebase_push = requests.post(firebase_url, json={"price": entry_price})
         try:
-            firebase_resp = firebase_write.json()
+            firebase_resp = firebase_push.json()
         except:
-            firebase_resp = {"error": "Firebase-Antwort kein JSON"}
+            firebase_resp = {"error": "Firebase Fehler"}
 
-    # Neue Verkaufspreis mit Gewinn
-    sell_price = round(avg_price * (1 + limit_sell_percent / 100), 6)
-    cancel_result = cancel_all_futures_orders(symbol_raw, api_key, secret_key)
-    pos_size, raw_pos = get_futures_position(symbol_raw, api_key, secret_key)
+    # 3. Gewinnziel
+    target_price = round(entry_price * (1 + limit_percent / 100), 6)
 
-    close_side = 4 if side == "BUY" else 3  # 4 = close long, 3 = close short
-    limit_resp, limit_params, limit_text = {}, {}, ""
+    # 4. Offene Orders löschen
+    cancel_result = cancel_all_swap_orders(symbol, api_key, secret_key)
 
+    # 5. Position holen
+    pos_size, position_raw = get_swap_position(symbol, api_key, secret_key)
+
+    # 6. Limit-Order zum Schließen setzen
+    limit_resp, limit_params, limit_raw = {}, {}, ""
     if pos_size > 0:
-        limit_resp, limit_params, limit_text = place_futures_limit_order(
-            symbol_raw, close_side, pos_size, sell_price, api_key, secret_key
+        limit_resp, limit_params, limit_raw = place_swap_limit_close_order(
+            symbol, side, pos_size, target_price, api_key, secret_key
         )
 
     return jsonify({
-        "symbol": symbol_raw,
-        "market_order_response": market_order_resp,
+        "symbol": symbol,
+        "market_order_response": market_resp,
         "market_order_params": market_params,
-        "market_order_raw": market_text,
+        "market_order_raw": market_raw,
         "firebase_response": firebase_resp,
-        "limit_sell_price": sell_price,
+        "target_price": target_price,
         "cancel_open_orders_result": cancel_result,
-        "position_volume": pos_size,
-        "position_raw": raw_pos,
+        "position_size": pos_size,
+        "position_raw": position_raw,
         "limit_order_response": limit_resp,
         "limit_order_params": limit_params,
-        "limit_order_raw": limit_text
+        "limit_order_raw": limit_raw
     })
 
 if __name__ == "__main__":
