@@ -11,25 +11,22 @@ app = Flask(__name__)
 BASE_URL = "https://open-api.bingx.com"
 FIREBASE_URL = os.getenv("FIREBASE_URL")
 
+
 def generate_signature(params: dict, secret: str):
     query_string = urlencode(sorted(params.items()))
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     return signature, query_string
 
-def get_mark_price(symbol):
-    url = f"{BASE_URL}/openApi/swap/v2/quote/price"
-    try:
-        resp = requests.get(url, params={"symbol": symbol})
-        data = resp.json()
-        return float(data["data"]["price"])
-    except Exception:
-        return None
 
 def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
     path = "/openApi/swap/v2/trade/order"
     url = BASE_URL + path
     timestamp = int(time.time() * 1000)
+
     swap_side = "OPEN_LONG" if side == "BUY" else "OPEN_SHORT"
+
+    if float(quantity) <= 0:
+        return {"error": "Volumen darf nicht 0 sein"}, {}, ""
 
     params = {
         "symbol": symbol,
@@ -57,6 +54,7 @@ def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
     except:
         return {"error": "Antwort kein JSON"}, params, response.text
 
+
 def get_swap_position_volume(symbol, api_key, secret_key):
     path = "/openApi/swap/v2/user/positions"
     url = BASE_URL + path
@@ -78,6 +76,7 @@ def get_swap_position_volume(symbol, api_key, secret_key):
             return float(pos.get("volume", 0)), data
 
     return 0.0, data
+
 
 def place_swap_limit_close_order(symbol, quantity, price, api_key, secret_key):
     path = "/openApi/swap/v2/trade/order"
@@ -110,6 +109,7 @@ def place_swap_limit_close_order(symbol, quantity, price, api_key, secret_key):
     except:
         return {"error": "Antwort kein JSON"}, params, response.text
 
+
 def cancel_all_swap_orders(symbol, api_key, secret_key):
     path = "/openApi/swap/v2/trade/cancelAll"
     url = BASE_URL + path
@@ -132,6 +132,7 @@ def cancel_all_swap_orders(symbol, api_key, secret_key):
     except:
         return {"error": "Antwort kein JSON", "content": response.text}
 
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
@@ -148,11 +149,20 @@ def webhook():
     secret_key = data.get("BINGX_SECRET_KEY")
     firebase_secret = data.get("firebase_secret")
 
-    mark_price = get_mark_price(symbol)
-    if not mark_price or mark_price == 0:
-        return jsonify({"error": "Mark price konnte nicht abgerufen werden"}), 400
+    # Get live market price
+    try:
+        mark_price_resp = requests.get(f"{BASE_URL}/openApi/swap/v2/quote/price", params={"symbol": symbol})
+        price_data = mark_price_resp.json()
+        market_price = float(price_data["data"]["price"])
+    except:
+        return jsonify({"error": "Konnte Marktpreis nicht abrufen"}), 400
 
-    quantity = round(usdt_amount / mark_price, 4)
+    if market_price <= 0:
+        return jsonify({"error": "Ungültiger Marktpreis"}), 400
+
+    vol = round(usdt_amount / market_price, 6)
+    if vol <= 0:
+        return jsonify({"error": "Berechnetes Volumen ist 0"}), 400
 
     firebase_response = {}
     if FIREBASE_URL and firebase_secret:
@@ -164,12 +174,13 @@ def webhook():
         except:
             firebase_response = {"error": "Firebase Antwort kein JSON"}
 
-    market_resp, market_params, market_raw = place_swap_market_order(symbol, side, quantity, api_key, secret_key)
+    market_resp, market_params, market_raw = place_swap_market_order(symbol, side, vol, api_key, secret_key)
 
     time.sleep(2)
     position_volume, position_raw = get_swap_position_volume(symbol, api_key, secret_key)
 
     target_price = round(price * (1 + limit_percent / 100), 2)
+
     cancel_result = cancel_all_swap_orders(symbol, api_key, secret_key)
 
     limit_resp = {}
@@ -192,6 +203,7 @@ def webhook():
         "cancel_open_orders_result": cancel_result,
         "firebase_response": firebase_response
     })
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
