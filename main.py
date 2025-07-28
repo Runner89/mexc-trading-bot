@@ -69,18 +69,15 @@ def webhook():
     secret_key = data.get("secret_key")
     symbol = data.get("symbol", "BTC-USDT")
     usdt_amount = data.get("usdt_amount")
-    position_side = data.get("position_side", "LONG")  # optional
+    # Beide Varianten prüfen
+    position_side = data.get("position_side") or data.get("positionSide") or "LONG"
 
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
-    # 1. Balance abrufen
     balance_response = get_futures_balance(api_key, secret_key)
-
-    # 2. Market Order platzieren
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
-    # Antwort zusammenbauen
     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
@@ -91,6 +88,7 @@ def webhook():
             "position_side": position_side
         }
     })
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
