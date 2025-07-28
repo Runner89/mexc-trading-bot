@@ -8,8 +8,8 @@ app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
-ORDER_ENDPOINT = "/openApi/swap/v2/order"
-PRICE_ENDPOINT = "/openApi/spot/v1/market/ticker"  # Für Preisabruf
+ORDER_ENDPOINT = "/openApi/swap/v2/order"  # ✅ KORRIGIERT
+PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
 
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -32,7 +32,6 @@ def get_current_price(symbol: str):
     else:
         print("❌ Price response error:", data)
         return None
-
 
 def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: float, position_side: str = "LONG"):
     price = get_current_price(symbol)
@@ -71,7 +70,6 @@ def webhook():
     secret_key = data.get("secret_key")
     symbol = data.get("symbol", "BTC-USDT")
     usdt_amount = data.get("usdt_amount")
-    # Beide Varianten prüfen
     position_side = data.get("position_side") or data.get("positionSide") or "LONG"
 
     if not api_key or not secret_key or not usdt_amount:
@@ -90,7 +88,6 @@ def webhook():
             "position_side": position_side
         }
     })
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
