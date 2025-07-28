@@ -1,60 +1,52 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import time
 import hmac
 import hashlib
-import time
 import requests
-import os
+import json
 
-app = Flask(__name__)
-CORS(app)  # 🔓 CORS aktivieren (für Browser-Zugriffe)
+# API Keys hier eintragen
+API_KEY = "dein_api_key"
+API_SECRET = "dein_api_secret"
 
-# 🔐 HMAC-Signatur generieren
-def generate_signature(secret_key, query_string):
-    return hmac.new(
-        secret_key.encode(),
-        query_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
+BASE_URL = "https://open-api.bingx.com"
+ENDPOINT = "/openApi/futures/v1/account/balance"
 
-# 🕒 Aktueller Timestamp in Millisekunden
-def get_timestamp():
-    return str(int(time.time() * 1000))
+def generate_signature(secret, params):
+    return hmac.new(secret.encode(), params.encode(), hashlib.sha256).hexdigest()
 
-# 📡 API-Request an BingX senden
-def get_bingx_balance(api_key, secret_key):
-    url = "https://open-api.bingx.com/openApi/user/assets"
-    timestamp = get_timestamp()
-    query_string = f"timestamp={timestamp}"
-    signature = generate_signature(secret_key, query_string)
-
+def get_futures_balance(api_key, api_secret):
+    timestamp = int(time.time() * 1000)
+    params = f"timestamp={timestamp}"
+    signature = generate_signature(api_secret, params)
+    url = f"{BASE_URL}{ENDPOINT}?{params}&signature={signature}"
     headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json",
-        "signature": signature
+        "X-BX-APIKEY": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return {
+            "error": True,
+            "status_code": response.status_code,
+            "message": response.text
+        }
+
+    data = response.json()
+    if data.get("code") != 0:
+        return {
+            "error": True,
+            "message": data.get("msg", "API Fehler")
+        }
+    
+    # Hier das relevante Kontostand-JSON zurückgeben
+    return {
+        "error": False,
+        "balances": data["data"]["balances"]
     }
 
-    params = {
-        "timestamp": timestamp
-    }
+def main():
+    result = get_futures_balance(API_KEY, API_SECRET)
+    # Ausgabe als schön formatiertes JSON
+    print(json.dumps(result, indent=2))
 
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        return response.json()
-    except Exception as e:
-        return {"error": str(e)}
-
-# 🌐 POST-Endpunkt: /webhook/balance
-@app.route("/webhook/balance", methods=["POST"])
-def webhook_balance():
-    data = request.get_json()
-    if not data or "api_key" not in data or "secret_key" not in data:
-        return jsonify({"error": "API Key und Secret Key sind erforderlich"}), 400
-
-    result = get_bingx_balance(data["api_key"], data["secret_key"])
-    return jsonify(result)
-
-# ▶️ Starten (lokal oder auf Render.com)
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Für Render.com und lokal
-    app.run(host="0.0.0.0", port=port)
+    main()
