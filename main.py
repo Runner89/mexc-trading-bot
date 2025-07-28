@@ -2,10 +2,9 @@ import time
 import hmac
 import hashlib
 import requests
-import json
 
-API_KEY = "DEIN_API_KEY"
-API_SECRET = "DEIN_API_SECRET"
+API_KEY = "AgKYtJTXgLDM7ZsiwaIUoJSUyrVXLjqkmFzLTfmCsau00nW1A6RQWddZQOOeAOzmcpDQ9zowa0BT8dG6BQ"
+API_SECRET = "YyxO6LVeivvtYIzcIe9c8XWbedyzBWqIYgZdv8suYWWEAxVygafnsRYBqzImu0WMiZ4bxmxuih6Sf56Pn8bwQ"
 
 BASE_URL = "https://open-api.bingx.com"
 ENDPOINT = "/openApi/swap/v2/user/balance"
@@ -22,12 +21,11 @@ def get_futures_balance():
         "X-BX-APIKEY": API_KEY
     }
     response = requests.get(url, headers=headers)
-    data = response.json()
-    return data
+    return response.json()
 
 def main():
-    balance_data = get_futures_balance()
-    print(json.dumps(balance_data, indent=2))
+    data = get_futures_balance()
+    print(data)
 
 if __name__ == "__main__":
     main()
