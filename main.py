@@ -40,7 +40,7 @@ def place_swap_market_order(symbol, side, quantity, api_key, secret_key):
         "timestamp": timestamp
     }
 
-    signature, _ = generate_signature(params, secret_key)
+    signature = generate_signature(params, secret_key)
     params["sign"] = signature
 
     headers = {
@@ -64,7 +64,7 @@ def get_swap_position_volume(symbol, api_key, secret_key):
     timestamp = int(time.time() * 1000)
 
     params = {"timestamp": timestamp}
-    signature, _ = generate_signature(params, secret_key)
+    signature = generate_signature(params, secret_key)
     params["sign"] = signature
 
     headers = {"X-BX-APIKEY": api_key}
@@ -96,7 +96,7 @@ def place_swap_limit_close_order(symbol, quantity, price, api_key, secret_key):
         "timestamp": timestamp
     }
 
-    signature, _ = generate_signature(params, secret_key)
+    signature = generate_signature(params, secret_key)
     params["sign"] = signature
 
     headers = {
@@ -119,7 +119,7 @@ def cancel_all_swap_orders(symbol, api_key, secret_key):
     timestamp = int(time.time() * 1000)
     params = {"symbol": symbol, "timestamp": timestamp}
 
-    signature, _ = generate_signature(params, secret_key)
+    signature = generate_signature(params, secret_key)
     params["sign"] = signature
 
     headers = {
