@@ -24,11 +24,10 @@ def get_futures_balance(api_key: str, secret_key: str):
     return response.json()
 
 def get_current_price(symbol: str):
-    # Beachte: Für Futures Symbol = z.B. "BTC-USDT"
-    url = f"{BASE_URL}{PRICE_ENDPOINT}?symbol={symbol}"
+    url = f"{BASE_URL}/openApi/swap/v2/market/ticker?symbol={symbol}"
     response = requests.get(url)
     data = response.json()
-    if data.get("code") == 0:
+    if data.get("code") == 0 and "data" in data and "lastPrice" in data["data"]:
         return float(data["data"]["lastPrice"])
     else:
         return None
