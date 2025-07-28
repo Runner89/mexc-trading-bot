@@ -1,19 +1,19 @@
-from flask import Flask, request, jsonify
 import time
 import hmac
 import hashlib
 import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
-ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"
+ORDER_ENDPOINT = "/openApi/swap/v2/order"
 
-def generate_signature(secret, params):
-    return hmac.new(secret.encode(), params.encode(), hashlib.sha256).hexdigest()
+def generate_signature(secret_key: str, params: str) -> str:
+    return hmac.new(secret_key.encode(), params.encode(), hashlib.sha256).hexdigest()
 
-def get_futures_balance(api_key, secret_key):
+def get_futures_balance(api_key: str, secret_key: str):
     timestamp = int(time.time() * 1000)
     params = f"timestamp={timestamp}"
     signature = generate_signature(secret_key, params)
@@ -22,11 +22,10 @@ def get_futures_balance(api_key, secret_key):
     response = requests.get(url, headers=headers)
     return response.json()
 
-def place_market_order(api_key, secret_key, symbol, usdt_amount):
+def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: str, position_side: str = "LONG"):
     timestamp = int(time.time() * 1000)
-    # Beispiel Parameter: symbol=BTC-USDT, side=BUY, type=MARKET, quoteOrderQty=usdt_amount
-    # quoteOrderQty gibt den USDT-Wert an, der ausgegeben wird (Kauf für diesen Betrag)
-    params = f"symbol={symbol}&side=BUY&type=MARKET&quoteOrderQty={usdt_amount}&timestamp={timestamp}"
+    # Wichtig: quoteOrderQty = USDT-Betrag, positionSide wird benötigt
+    params = f"symbol={symbol}&side=BUY&type=MARKET&quoteOrderQty={usdt_amount}&positionSide={position_side}&timestamp={timestamp}"
     signature = generate_signature(secret_key, params)
     url = f"{BASE_URL}{ORDER_ENDPOINT}?{params}&signature={signature}"
     headers = {"X-BX-APIKEY": api_key}
@@ -36,36 +35,33 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
+
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
 
     if not api_key or not secret_key:
         return jsonify({"error": True, "message": "api_key and secret_key are required"}), 400
 
-    # Balance holen
+    # Futures Balance abrufen
     balance_response = get_futures_balance(api_key, secret_key)
-    if balance_response.get("code") != 0:
-        return jsonify({"error": True, "message": balance_response.get("msg", "Error fetching balance")}), 400
-
-    # Verfügbare Assets auslesen
-    balances = balance_response["data"].get("balanceList") or balance_response["data"].get("balances") or []
-    if not isinstance(balances, list):
-        balances = [balance_response["data"]["balance"]]
-
     available_balances = {}
-    for bal in balances:
-        asset = bal.get("asset")
-        available = bal.get("availableMargin") or bal.get("balance") or "0"
-        if asset:
-            available_balances[asset] = available
+    if balance_response.get("code") == 0:
+        balance_data = balance_response.get("data", {})
+        balance_info = balance_data.get("balance", {})
+        asset = balance_info.get("asset")
+        available = balance_info.get("availableMargin")
+        available_balances[asset] = available
+    else:
+        return jsonify({"error": True, "message": balance_response.get("msg", "Failed to get balance")})
 
-    # Falls symbol und usdt_amount im Request vorhanden sind, Order platzieren
-    symbol = data.get("symbol")        # z.B. "BTC-USDT"
-    usdt_amount = data.get("usdt_amount")  # z.B. "100" (als String oder Zahl)
+    # Market Order falls mitgesendet
+    symbol = data.get("symbol")
+    usdt_amount = data.get("usdt_amount")
+    position_side = data.get("positionSide", "LONG")
 
     order_result = None
     if symbol and usdt_amount:
-        order_result = place_market_order(api_key, secret_key, symbol, str(usdt_amount))
+        order_result = place_market_order(api_key, secret_key, symbol, str(usdt_amount), position_side)
 
     return jsonify({
         "error": False,
