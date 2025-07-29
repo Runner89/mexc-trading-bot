@@ -66,18 +66,52 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
+    import requests
+    import time
+    import hmac
+    import hashlib
+
+    if params is None:
+        params = {}
+
+    timestamp = int(time.time() * 1000)
+    params['timestamp'] = timestamp
+
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    signature = hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    params['signature'] = signature
+
+    url = f"{BASE_URL}{endpoint}"
+
+    headers = {
+        "X-BX-APIKEY": api_key
+    }
+
+    if http_method == "GET":
+        response = requests.get(url, headers=headers, params=params)
+    elif http_method == "POST":
+        response = requests.post(url, headers=headers, json=params)
+    elif http_method == "DELETE":
+        response = requests.delete(url, headers=headers, params=params)
+    else:
+        raise ValueError("Unsupported HTTP method")
+
+    return response.json()
+
+
 def get_current_position(api_key, secret_key, symbol, position_side):
-    endpoint = "/v2/private/position/list"
+    endpoint = "/openApi/swap/v2/position/list"  # korrektes Endpoint prüfen, ggf. anpassen
     params = {
         "symbol": symbol
     }
-    # Hier brauchst du vermutlich eine Funktion zum signierten Request. Falls nicht vorhanden, bitte ergänzen.
     response = send_signed_request("GET", endpoint, api_key, secret_key, params)
-    if isinstance(response, dict) and response.get("code") == 0:
+    if response.get("code") == 0:
         for pos in response.get("data", []):
-            if pos.get("side") == position_side.upper():
+            if pos.get("positionSide") == position_side.upper():
                 return float(pos.get("size", 0))
     return 0
+
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
