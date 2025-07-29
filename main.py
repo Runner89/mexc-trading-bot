@@ -76,26 +76,25 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
         "side": "SELL",
         "type": "LIMIT",
         "quantity": round(quantity, 6),
-        "price": round(limit_price, 6),   # Genauigkeit erhöht
+        "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side,
-        "reduceOnly": True,                # Optional
         "timestamp": timestamp
     }
 
+    # Sortiere die Parameter alphabetisch und erstelle Query-String
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
-    print("[Limit Order] Params to send:", params_dict)  # Debug
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {
         "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json"
+        "Content-Type": "application/x-www-form-urlencoded"
     }
 
-    response = requests.post(url, headers=headers, json=params_dict)
-    print("[Limit Order] Response:", response.json())  # Debug
+    # Sende als Form-Daten, nicht als JSON
+    response = requests.post(url, headers=headers, data=params_dict)
     return response.json()
 
 
