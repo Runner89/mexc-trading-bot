@@ -101,14 +101,15 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
 
 def get_current_position(api_key, secret_key, symbol, position_side):
-    endpoint = "/openApi/swap/v2/position/list"  # korrektes Endpoint prüfen, ggf. anpassen
+    endpoint = "/openApi/swap/v2/position/list"
     params = {
         "symbol": symbol
     }
     response = send_signed_request("GET", endpoint, api_key, secret_key, params)
     if response.get("code") == 0:
-        for pos in response.get("data", []):
-            if pos.get("positionSide") == position_side.upper():
+        positions = response.get("data", [])
+        for pos in positions:
+            if pos.get("positionSide", "").upper() == position_side.upper():
                 return float(pos.get("size", 0))
     return 0
 
