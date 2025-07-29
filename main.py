@@ -164,6 +164,21 @@ def webhook():
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     logs.append(f"Market-Order Antwort: {order_response}")
 
+    try:
+        open_orders = get_open_orders(api_key, secret_key, symbol)
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+            for order in open_orders.get("data", []):
+                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
+                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+        else:
+            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
+        except Exception as e:
+        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
+
+
+
+
     # Hier den neuen Block einfügen:
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
