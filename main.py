@@ -294,12 +294,12 @@ def webhook():
             logs.append(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
 
     try:
-        if price_from_webhook and sell_percentage:
-            limit_price = round(float(price_from_webhook) * float(sell_percentage), 5)
-        elif durchschnittspreis and sell_percentage:
+        if durchschnittspreis and sell_percentage:
             limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 5)
+            logs.append(f"[Limit Order] Limit-Preis auf Basis von Firebase-Durchschnitt {durchschnittspreis} + {sell_percentage}%: {limit_price}")
         else:
             limit_price = 0
+            logs.append(f"[Limit Order] Kein Durchschnittspreis oder Prozentsatz vorhanden – Limit-Order wird nicht gesetzt.")
 
         logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
 
