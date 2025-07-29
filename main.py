@@ -218,6 +218,8 @@ def webhook():
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     
+    logs.append(f"Market-Order Antwort: {order_response}")
+    
     # Warte und prüfe Position mehrfach
     sell_quantity = 0
     for attempt in range(5):
