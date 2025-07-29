@@ -195,8 +195,11 @@ def cancel_order(api_key, secret_key, symbol, order_id):
 def firebase_loesche_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
     response = requests.delete(url)
-    return response.status_code == 200
-
+    if response.status_code == 200:
+        return True
+    else:
+        print(f"[Firebase Löschen] Fehler: Status {response.status_code}, Antwort: {response.text}")
+        return False
 
 def firebase_speichere_kaufpreis(asset, price, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
@@ -265,6 +268,7 @@ def webhook():
 
     # 2. Wenn Sell-Limit-Order existiert, dann Kaufpreise löschen
     if sell_limit_exists and firebase_secret:
+        base_asset = symbol.split("-")[0]
         success = firebase_loesche_kaufpreise(base_asset, firebase_secret)
         logs.append(f"[Firebase] Kaufpreise gelöscht: {success}")
 
