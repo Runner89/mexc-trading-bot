@@ -205,11 +205,18 @@ def berechne_durchschnittspreis(preise):
 
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
+    
+    # mappe positionSide auf side für Hebel-Setzung
+    side_map = {
+        "LONG": "BUY",
+        "SHORT": "SELL"
+    }
+    
     params = {
         "symbol": symbol,
         "leverage": int(leverage),
         "positionSide": position_side.upper(),
-        "side": position_side.upper()  # zusätzlich 'side' hinzufügen
+        "side": side_map.get(position_side.upper())  # korrektes Side-Value setzen
     }
     return send_signed_request("POST", endpoint, api_key, secret_key, params)
 
