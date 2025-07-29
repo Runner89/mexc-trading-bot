@@ -12,6 +12,7 @@ BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
 ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"
 PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
+OPEN_ORDERS_ENDPOINT = "/openApi/swap/v2/trade/openOrders"
 
 # --- Firebase Setup ---
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")  # z. B. https://deinprojekt.firebaseio.com
@@ -82,8 +83,6 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
         "timestamp": timestamp
     }
 
-    # Erstelle Query-String für Signatur auf Grundlage JSON-Parametern
-    # Sortiert und mit gleichen Dezimalstellen wie gesendet:
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
@@ -97,10 +96,27 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+# --- Neue Funktion: Offene Orders abfragen ---
+def get_open_orders(api_key: str, secret_key: str, symbol: str):
+    timestamp = int(time.time() * 1000)
+    params = f"symbol={symbol}&timestamp={timestamp}"
+    signature = generate_signature(secret_key, params)
+    url = f"{BASE_URL}{OPEN_ORDERS_ENDPOINT}?{params}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+    response = requests.get(url, headers=headers)
+    return response.json()
 
+# --- Neue Funktion: Order löschen ---
+def cancel_order(api_key: str, secret_key: str, symbol: str, order_id: str):
+    timestamp = int(time.time() * 1000)
+    params = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    signature = generate_signature(secret_key, params)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}?{params}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+    response = requests.delete(url, headers=headers)
+    return response.json()
 
-
-# --- Firebase Funktion ---
+# --- Firebase Funktionen ---
 def firebase_speichere_kaufpreis(asset, price, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
     data = {"price": price}
@@ -125,35 +141,6 @@ def berechne_durchschnittspreis(preise: list):
     if not preise:
         return None
     return round(sum(preise) / len(preise), 4)
-
-    data = request.json  # oder request.get_json()
-    sell_percentage = data.get('sell_percentage')
-    order_response = None
-
-    # 💡 Verhindert NameError
-    order_response = None
-    
-    if durchschnittspreis and sell_percentage and firebase_secret:
-        try:
-            # Preisaufschlag berechnen
-            limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
-
-            # Aktuellen Coin-Bestand abrufen
-            symbol_base = symbol.split("-")[0]  # z.B. BTC aus BTC-USDT
-            balances = balance_response.get("data", {}).get("balance", [])
-            asset_balance = next((item for item in balances if item.get("asset") == symbol_base), None)
-
-            if asset_balance and float(asset_balance.get("availableBalance", 0)) > 0:
-                coin_amount = float(asset_balance["availableBalance"])
-                order_response = place_limit_sell_order(
-                    api_key, secret_key, symbol, coin_amount, limit_price
-                )
-            else:
-                print(f"[Limit Order] Kein verfügbares Guthaben für {symbol_base}")
-        except Exception as e:
-            print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
-
-
 
 # --- Webhook-Endpunkt ---
 @app.route('/webhook', methods=['POST'])
@@ -189,6 +176,7 @@ def webhook():
 
     # 4. Durchschnittspreis aus Firebase ermitteln
     durchschnittspreis = None
+    kaufpreise = []
     if firebase_secret:
         try:
             base_asset = symbol.split("-")[0]
@@ -199,9 +187,23 @@ def webhook():
 
     limit_order_response = None
 
-    # 5. Limit-Sell-Order basierend auf executedQty aus Market-Order platzieren
+    # --- NEU: Vor Platzieren der Limit-Sell-Order alle offenen Sell-Limit-Orders löschen ---
     if durchschnittspreis is not None and sell_percentage is not None and firebase_secret:
         try:
+            # Alle offenen Orders holen
+            open_orders_response = get_open_orders(api_key, secret_key, symbol)
+
+            if open_orders_response.get("code") == 0:
+                orders = open_orders_response.get("data", [])
+                for order in orders:
+                    # Nur Sell LIMIT Orders löschen
+                    if order.get("side") == "SELL" and order.get("type") == "LIMIT":
+                        order_id = order.get("orderId")
+                        cancel_resp = cancel_order(api_key, secret_key, symbol, order_id)
+                        print(f"[Cancel Order] Order {order_id} gelöscht: {cancel_resp}")
+            else:
+                print("[Cancel Order] Fehler beim Abrufen offener Orders:", open_orders_response)
+
             limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
 
             # Menge aus der Market-Order Response verwenden (nicht aus Balance!)
@@ -217,7 +219,6 @@ def webhook():
         except Exception as e:
             print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
 
-    
     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
@@ -231,13 +232,10 @@ def webhook():
             "sell_percentage": sell_percentage
         },
         "firebase_average_price": durchschnittspreis,
-        "firebase_all_prices": kaufpreise   # <---- Hier die komplette Liste hinzufügen
+        "firebase_all_prices": kaufpreise
     })
 
 
-
-
-
-# --- Flask App Start --- 
-if __name__ == "__main__": 
+# --- Flask App Start ---
+if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
