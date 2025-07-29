@@ -203,8 +203,18 @@ def berechne_durchschnittspreis(preise):
     preise = [float(p) for p in preise if isinstance(p, (int, float, str)) and str(p).replace('.', '', 1).isdigit()]
     return round(sum(preise) / len(preise), 6) if preise else None
 
+def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
+    endpoint = "/openApi/swap/v2/trade/leverage"
+    params = {
+        "symbol": symbol,
+        "leverage": int(leverage),
+        "positionSide": position_side.upper()
+    }
+    return send_signed_request("POST", endpoint, api_key, secret_key, params)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    leverage = data.get("leverage", 1)  # Default ist 1, falls nicht angegeben
     logs = []
     data = request.json
     sell_percentage = data.get("sell_percentage")
@@ -219,7 +229,15 @@ def webhook():
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
-    # 1. Market-Order ausführen
+    # 1. Hebel setzen (neu)
+    try:
+        logs.append(f"Setze Hebel auf {leverage} für {symbol} ({position_side})...")
+        leverage_response = set_leverage(api_key, secret_key, symbol, leverage, position_side)
+        logs.append(f"Hebel gesetzt: {leverage_response}")
+    except Exception as e:
+        logs.append(f"Fehler beim Setzen des Hebels: {e}")
+
+    # 1.2. Market-Order ausführen
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     time.sleep(2)
