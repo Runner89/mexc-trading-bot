@@ -163,7 +163,11 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     }
 
     response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
+    try:
+        return response.json()
+    except ValueError:
+        return {"code": -1, "msg": "Invalid JSON response", "raw_response": response.text}
+
 
 def get_open_orders(api_key, secret_key, symbol):
     timestamp = int(time.time() * 1000)
@@ -282,12 +286,15 @@ def webhook():
         logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
 
         if sell_quantity > 0 and limit_price > 0:
-            # Vorher alle offenen Sell Limit Orders löschen
             cancelled = cancel_existing_sell_limit_orders(api_key, secret_key, symbol, position_side)
             logs.append(f"Gelöschte alte Sell Limit Orders: {cancelled}")
-            
-            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
-            logs.append(f"[Limit Order] Antwort: {limit_order_response}")
+        
+            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side=position_side)
+        
+            if isinstance(limit_order_response, dict):
+                logs.append(f"[Limit Order] Antwort: {limit_order_response}")
+            else:
+                logs.append(f"[Limit Order] Antwort kein dict, raw response: {limit_order_response}")
         else:
             logs.append("[Limit Order] Ungültige Orderdaten, Limit-Order nicht gesendet.")
     except Exception as e:
