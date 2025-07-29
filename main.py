@@ -82,7 +82,8 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
         "timestamp": timestamp
     }
 
-    # Sortiere die Parameter alphabetisch und erstelle Query-String
+    # Erstelle Query-String für Signatur auf Grundlage JSON-Parametern
+    # Sortiert und mit gleichen Dezimalstellen wie gesendet:
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
@@ -90,12 +91,12 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {
         "X-BX-APIKEY": api_key,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json"
     }
 
-    # Sende als Form-Daten, nicht als JSON
-    response = requests.post(url, headers=headers, data=params_dict)
+    response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
+
 
 
 
