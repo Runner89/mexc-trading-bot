@@ -219,11 +219,13 @@ def webhook():
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
+    # 1. Market-Order ausführen
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     time.sleep(2)
     logs.append(f"Market-Order Antwort: {order_response}")
 
+    # 2. Positionsgröße ermitteln
     try:
         sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side, logs)
         if sell_quantity == 0:
@@ -235,28 +237,37 @@ def webhook():
         sell_quantity = 0
         logs.append(f"Fehler bei Positionsabfrage: {e}")
 
+    # 3. Sell-Limit-Orders prüfen
+    open_orders = {}
+    sell_limit_orders_exist = False
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
         logs.append(f"Open Orders: {open_orders}")
-        sell_limit_orders_exist = False
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
             for order in open_orders.get("data", {}).get("orders", []):
-                if order.get("side") == "SELL" and order.get("positionSide") == "LONG" and order.get("type") == "LIMIT":
+                if order.get("side") == "SELL" and order.get("positionSide") == position_side and order.get("type") == "LIMIT":
                     sell_limit_orders_exist = True
                     break
-        if not sell_limit_orders_exist and firebase_secret:
+    except Exception as e:
+        logs.append(f"Fehler bei Orderprüfung: {e}")
+
+    # 4. Kaufpreise löschen (nur wenn keine Sell-Limit-Orders existieren)
+    if firebase_secret and not sell_limit_orders_exist:
+        try:
             base_asset = symbol.split("-")[0]
             logs.append(firebase_loesche_kaufpreise(base_asset, firebase_secret))
-    except Exception as e:
-        logs.append(f"Fehler bei Orderprüfung oder Kaufpreis-Löschung: {e}")
+        except Exception as e:
+            logs.append(f"Fehler beim Löschen der Kaufpreise: {e}")
 
-    try:
-        if firebase_secret and price_from_webhook:
+    # 5. Kaufpreis speichern
+    if firebase_secret and price_from_webhook:
+        try:
             base_asset = symbol.split("-")[0]
             logs.append(firebase_speichere_kaufpreis(base_asset, float(price_from_webhook), firebase_secret))
-    except Exception as e:
-        logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
+        except Exception as e:
+            logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
 
+    # 6. Durchschnitt berechnen
     durchschnittspreis = None
     kaufpreise = []
     if firebase_secret:
@@ -268,15 +279,17 @@ def webhook():
         except Exception as e:
             logs.append(f"Fehler bei Durchschnittsberechnung: {e}")
 
+    # 7. Alte Sell-Limit-Orders löschen
     try:
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
             for order in open_orders.get("data", {}).get("orders", []):
-                if order.get("side") == "SELL" and order.get("positionSide") == "LONG" and order.get("type") == "LIMIT":
+                if order.get("side") == "SELL" and order.get("positionSide") == position_side and order.get("type") == "LIMIT":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
                     logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_response}")
     except Exception as e:
         logs.append(f"Fehler beim Löschen der Sell-Limit-Orders: {e}")
 
+    # 8. Neue Limit-Order setzen
     limit_order_response = None
     try:
         if price_from_webhook and sell_percentage:
@@ -307,6 +320,7 @@ def webhook():
         "firebase_all_prices": kaufpreise,
         "logs": logs
     })
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
