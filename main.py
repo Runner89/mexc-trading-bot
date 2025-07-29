@@ -293,7 +293,7 @@ def webhook():
     limit_order_response = None
     try:
         if price_from_webhook and sell_percentage:
-            limit_price = round(float(price_from_webhook) * float(sell_percentage), 5)
+            limit_price = round(float(price_from_webhook) * (1 + float(sell_percentage) / 100), 5)
         elif durchschnittspreis and sell_percentage:
             limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 5)
         else:
