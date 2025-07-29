@@ -71,7 +71,9 @@ def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: 
 
 def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity: float, limit_price: float, position_side: str = "SHORT"):
     timestamp = int(time.time() * 1000)
+    print(f"[Limit Order] Limit-Preis: {limit_price}, Ausgeführte Menge: {executed_qty}")
 
+    
     params_dict = {
         "symbol": symbol,
         "side": "SELL",
