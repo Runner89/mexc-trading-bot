@@ -201,7 +201,7 @@ def firebase_lese_kaufpreise(asset, firebase_secret):
 
 def berechne_durchschnittspreis(preise):
     preise = [float(p) for p in preise if isinstance(p, (int, float, str)) and str(p).replace('.', '', 1).isdigit()]
-    return round(sum(preise) / len(preise), 4) if preise else None
+    return round(sum(preise) / len(preise), 6) if preise else None
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
