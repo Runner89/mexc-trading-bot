@@ -71,9 +71,7 @@ def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: 
 
 def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity: float, limit_price: float, position_side: str = "SHORT"):
     timestamp = int(time.time() * 1000)
-    print(f"[Limit Order] Limit-Preis: {limit_price}, Ausgeführte Menge: {executed_qty}")
 
-    
     params_dict = {
         "symbol": symbol,
         "side": "SELL",
@@ -97,6 +95,7 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
+
 
 # --- Neue Funktion: Offene Orders abfragen ---
 def get_open_orders(api_key: str, secret_key: str, symbol: str):
@@ -185,21 +184,31 @@ def webhook():
     limit_order_response = None
 
     if durchschnittspreis is not None and sell_percentage is not None and firebase_secret:
-        try:
-            limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
-            executed_qty = float(order_response.get("data", {}).get("order", {}).get("executedQty", 0))
+    try:
+        limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
+        executed_qty = float(order_response.get("data", {}).get("order", {}).get("executedQty", 0))
 
-            print(f"[Limit Order] Limit-Preis: {limit_price}, Ausgeführte Menge: {executed_qty}")
+        print(f"[Limit Order] Limit-Preis: {limit_price}, Ausgeführte Menge: {executed_qty}")
 
-            if executed_qty > 0:
-                limit_order_response = place_limit_sell_order(
-                    api_key, secret_key, symbol, executed_qty, limit_price, position_side="LONG"
-                )
-                print(f"[Limit Order] Antwort: {limit_order_response}")
-            else:
-                print("[Limit Order] Keine ausgeführte Menge aus Market-Order gefunden, Limit-Order nicht platziert.")
-        except Exception as e:
-            print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
+        if executed_qty > 0:
+            # Hier: bestehende Sell-Limit-Orders löschen, bevor neue Limit-Order gesetzt wird
+            open_orders = get_open_orders(api_key, secret_key, symbol)
+            if open_orders.get("code") == 0:
+                for order in open_orders.get("data", []):
+                    if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
+                        cancel_response = cancel_order(api_key, secret_key, symbol, order.get("orderId"))
+                        print(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+
+            # Neue Limit-Sell-Order platzieren
+            limit_order_response = place_limit_sell_order(
+                api_key, secret_key, symbol, executed_qty, limit_price, position_side="LONG"
+            )
+            print(f"[Limit Order] Antwort: {limit_order_response}")
+        else:
+            print("[Limit Order] Keine ausgeführte Menge aus Market-Order gefunden, Limit-Order nicht platziert.")
+    except Exception as e:
+        print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
+
 
     return jsonify({
         "error": False,
