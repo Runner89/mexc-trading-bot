@@ -76,9 +76,10 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
         "side": "SELL",
         "type": "LIMIT",
         "quantity": round(quantity, 6),
-        "price": round(limit_price, 2),
+        "price": round(limit_price, 6),   # Genauigkeit erhöht
         "timeInForce": "GTC",
         "positionSide": position_side,
+        "reduceOnly": True,                # Optional
         "timestamp": timestamp
     }
 
@@ -86,6 +87,7 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
+    print("[Limit Order] Params to send:", params_dict)  # Debug
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {
         "X-BX-APIKEY": api_key,
@@ -93,7 +95,9 @@ def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity:
     }
 
     response = requests.post(url, headers=headers, json=params_dict)
+    print("[Limit Order] Response:", response.json())  # Debug
     return response.json()
+
 
 
 # --- Firebase Funktion ---
