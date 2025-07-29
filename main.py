@@ -102,7 +102,15 @@ def get_open_orders(api_key: str, secret_key: str, symbol: str):
     url = f"{BASE_URL}{OPEN_ORDERS_ENDPOINT}?{params}&signature={signature}"
     headers = {"X-BX-APIKEY": api_key}
     response = requests.get(url, headers=headers)
-    return response.json()
+
+    try:
+        data = response.json()
+    except ValueError:
+        # Rückgabe bei ungültiger JSON-Antwort
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw_response": response.text}
+
+    return data
+
 
 def cancel_order(api_key: str, secret_key: str, symbol: str, order_id: str):
     timestamp = int(time.time() * 1000)
@@ -166,13 +174,14 @@ def webhook():
 
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
+        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
             for order in open_orders.get("data", []):
                 if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
         else:
-            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
+            logs.append(f"Open Orders Antwort unerwartet oder Fehler: {open_orders}")
     except Exception as e:
         logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
 
@@ -218,11 +227,14 @@ def webhook():
     # Beispiel: offene Sell-Orders mit PositionSide LONG stornieren
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
-        if open_orders.get("code") == 0:
+        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
             for order in open_orders.get("data", []):
                 if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+        else:
+            logs.append(f"Open Orders Antwort unerwartet oder Fehler: {open_orders}")
     except Exception as e:
         logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
 
