@@ -271,6 +271,8 @@ def webhook():
         base_asset = symbol.split("-")[0]
         success = firebase_loesche_kaufpreise(base_asset, firebase_secret)
         logs.append(f"[Firebase] Kaufpreise gelöscht: {success}")
+        if success:
+            time.sleep(2)  # Warte kurz, bis Firebase die Löschung verarbeitet hat
 
     # 3. Speichere dann den neuen Kaufpreis wie bisher
     if firebase_secret and price_from_webhook:
