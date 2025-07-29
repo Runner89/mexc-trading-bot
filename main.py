@@ -173,8 +173,9 @@ def webhook():
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
         else:
             logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
-        except Exception as e:
+    except Exception as e:
         logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
+
 
 
 
