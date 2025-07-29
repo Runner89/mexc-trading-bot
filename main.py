@@ -183,6 +183,16 @@ def get_open_orders(api_key, secret_key, symbol):
 
     return data
 
+def has_open_sell_limit_order_bingx(api_key, secret_key, symbol):
+    orders = get_open_orders(api_key, secret_key, symbol)
+    if not isinstance(orders, list):
+        print("Fehler bei der API-Antwort:", orders)
+        return False
+    for order in orders:
+        if order.get("side") == "SELL" and order.get("type") == "LIMIT":
+            return True
+    return False
+
 def cancel_order(api_key, secret_key, symbol, order_id):
     timestamp = int(time.time() * 1000)
     params = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
@@ -192,20 +202,62 @@ def cancel_order(api_key, secret_key, symbol, order_id):
     response = requests.delete(url, headers=headers)
     return response.json()
 
+def firebase_speichere_kaufpreis(asset, price, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    data = {"price": price}
+    response = requests.put(url, json=data)  # PUT statt POST
+    print(f"Kaufpreis gespeichert für {asset}: {price}, Status: {response.status_code}")
+
 def firebase_loesche_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
     response = requests.delete(url)
     if response.status_code == 200:
-        return True
+        print(f"Kaufpreise für {asset} gelöscht")
     else:
-        print(f"[Firebase Löschen] Fehler: Status {response.status_code}, Antwort: {response.text}")
+        print(f"Fehler beim Löschen der Kaufpreise für {asset}: Status {response.status_code}")
+
+def has_open_sell_limit_order_bingx(api_key: str, secret_key: str, symbol: str) -> bool:
+    """
+    Prüft, ob für das angegebene Symbol eine offene Sell Limit Order existiert.
+
+    :param api_key: BingX API-Key
+    :param secret_key: BingX Secret-Key
+    :param symbol: Handelssymbol, z.B. "BTC-USDT"
+    :return: True wenn offene Sell Limit Order existiert, sonst False
+    """
+    BASE_URL = "https://open-api.bingx.com"
+    OPEN_ORDERS_ENDPOINT = "/openApi/swap/v2/trade/openOrders"
+
+    timestamp = int(time.time() * 1000)
+    params = {
+        "symbol": symbol,
+        "timestamp": timestamp
+    }
+
+    # Query-String für Signatur erstellen (alphabetisch sortiert)
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    signature = hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+    params["signature"] = signature
+
+    headers = {
+        "X-BX-APIKEY": api_key
+    }
+
+    url = f"{BASE_URL}{OPEN_ORDERS_ENDPOINT}"
+    response = requests.get(url, headers=headers, params=params)
+    data = response.json()
+
+    if data.get("code") != 0:
+        # API-Fehler, kann hier geloggt oder gehandhabt werden
         return False
 
-def firebase_speichere_kaufpreis(asset, price, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
-    data = {"price": price}
-    response = requests.post(url, json=data)
-    return f"Kaufpreis gespeichert für {asset}: {price}, Status: {response.status_code}"
+    orders = data.get("data", {}).get("orders", [])
+    for order in orders:
+        if order.get("side") == "SELL" and order.get("type") == "LIMIT":
+            return True
+
+    return False
+
 
 def firebase_lese_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
@@ -267,24 +319,21 @@ def webhook():
         logs.append(f"Fehler beim Prüfen offener Orders: {e}")
 
     # 2. Wenn Sell-Limit-Order existiert, dann Kaufpreise löschen
-    if sell_limit_exists and firebase_secret:
-        base_asset = symbol.split("-")[0]
-        success = firebase_loesche_kaufpreise(base_asset, firebase_secret)
-        logs.append(f"[Firebase] Kaufpreise gelöscht: {success}")
-        if success:
-            time.sleep(2)  # Warte kurz, bis Firebase die Löschung verarbeitet hat
+    base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
+
+    # Hier prüfen, ob offene Sell-Limit-Orders existieren:
+    offene_position = has_open_sell_limit_order(symbol, api_key, secret_key)
+
+    if not offene_position:
+        firebase_loesche_kaufpreise(base_asset, firebase_secret)
+        time.sleep(1)  # Sicherstellen, dass Löschung abgeschlossen ist
+        debug_info["ase_loeschen"] = True
+    else:
+        debug_info["ase_loeschen"] = False
 
     # 3. Speichere dann den neuen Kaufpreis wie bisher
-    if firebase_secret and price_from_webhook:
+    if ase_secret and price_from_webhook:
         try:
-            firebase_save_result = firebase_speichere_kaufpreis(base_asset, float(price_from_webhook), firebase_secret)
-            logs.append(f"[Firebase] Webhook-Preis gespeichert: {firebase_save_result}")
-        except Exception as e:
-            logs.append(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
-
-    if firebase_secret and price_from_webhook:
-        try:
-            base_asset = symbol.split("-")[0]
             firebase_save_result = firebase_speichere_kaufpreis(base_asset, float(price_from_webhook), firebase_secret)
             logs.append(f"[Firebase] Webhook-Preis gespeichert: {firebase_save_result}")
         except Exception as e:
