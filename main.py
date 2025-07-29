@@ -165,10 +165,9 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     response = requests.post(url, headers=headers, json=params_dict)
 
     try:
-        json_response = response.json()
-        return json_response
+        return response.json()
     except ValueError:
-        # JSON konnte nicht geparst werden: gib raw Text zurück
+        print(f"Limit order response nicht JSON:\n{response.text}")
         return {"code": -1, "msg": "Invalid JSON response", "raw_response": response.text}
 
 
@@ -298,7 +297,9 @@ def webhook():
             if isinstance(limit_order_response, dict):
                 logs.append(f"[Limit Order] Antwort: {limit_order_response}")
             else:
+                # Falls limit_order_response doch ein String ist
                 logs.append(f"[Limit Order] Antwort kein dict, raw response: {limit_order_response}")
+
         else:
             logs.append("[Limit Order] Ungültige Orderdaten, Limit-Order nicht gesendet.")
     except Exception as e:
