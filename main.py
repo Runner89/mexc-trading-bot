@@ -141,6 +141,7 @@ def berechne_durchschnittspreis(preise: list):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     logs = []
+
     data = request.json
     sell_percentage = data.get("sell_percentage")
 
@@ -153,7 +154,7 @@ def webhook():
     price_from_webhook = data.get("price")
 
     if not api_key or not secret_key or not usdt_amount:
-        return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required", "logs": logs}), 400
+        return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
     logs.append(f"Starte Balance-Abfrage für {symbol}...")
     balance_response = get_futures_balance(api_key, secret_key)
@@ -163,14 +164,18 @@ def webhook():
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     logs.append(f"Market-Order Antwort: {order_response}")
 
-    if firebase_secret and price_from_webhook is not None:
-        try:
-            price_to_store = float(price_from_webhook)
-            base_asset = symbol.split("-")[0]
-            log_msg = firebase_speichere_kaufpreis(base_asset, price_to_store, firebase_secret)
-            logs.append(f"[Firebase] {log_msg}")
-        except Exception as e:
-            logs.append(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
+    # Hier den neuen Block einfügen:
+    try:
+        open_orders = get_open_orders(api_key, secret_key, symbol)
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+            for order in open_orders.get("data", []):
+                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
+                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+        else:
+            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
+    except Exception as e:
+        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
 
     durchschnittspreis = None
     kaufpreise = []
