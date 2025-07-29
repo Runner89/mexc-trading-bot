@@ -223,23 +223,21 @@ def webhook():
         sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
         logs.append(f"[Market Order] Positions Rohdaten: {positions_raw}")
+
+        # Falls Position 0, dann Menge aus Market-Order Antwort versuchen zu holen
+        if sell_quantity == 0:
+            executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty")
+            if executed_qty_str is not None:
+                try:
+                    sell_quantity = float(executed_qty_str)
+                    logs.append(f"[Market Order] Ausgeführte Menge aus order_response verwendet: {sell_quantity}")
+                except Exception as e:
+                    logs.append(f"[Market Order] Fehler beim Parsen von executedQty: {e}")
+
     except Exception as e:
         sell_quantity = 0
         logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
 
-
-    try:
-        open_orders = get_open_orders(api_key, secret_key, symbol)
-        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
-        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
-            for order in open_orders.get("data", {}).get("orders", []):
-                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
-                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
-        else:
-            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
-    except Exception as e:
-        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
 
     limit_order_response = None
     durchschnittspreis = None
