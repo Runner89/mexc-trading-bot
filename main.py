@@ -1,5 +1,3 @@
-#Limit order wird gelöscht und korrekt gesetzt
-
 from flask import Flask, request, jsonify
 import time
 import hmac
@@ -14,7 +12,6 @@ BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
 ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"
 PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
 OPEN_ORDERS_ENDPOINT = "/openApi/swap/v2/trade/openOrders"
-
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
 def generate_signature(secret_key: str, params: str) -> str:
@@ -69,11 +66,6 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="
     return response.json()
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
-    import requests
-    import time
-    import hmac
-    import hashlib
-
     if params is None:
         params = {}
 
@@ -85,10 +77,7 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
     params['signature'] = signature
 
     url = f"{BASE_URL}{endpoint}"
-
-    headers = {
-        "X-BX-APIKEY": api_key
-    }
+    headers = {"X-BX-APIKEY": api_key}
 
     if http_method == "GET":
         response = requests.get(url, headers=headers, params=params)
@@ -100,7 +89,6 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
         raise ValueError("Unsupported HTTP method")
 
     return response.json()
-
 
 def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = "/openApi/swap/v2/user/positions"
@@ -120,7 +108,6 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
                 if logs is not None:
                     logs.append(f"Gefundene Position: {pos}")
                 try:
-                    # Versuche verschiedene Felder
                     position_size = float(pos.get("size", 0))
                     if position_size == 0:
                         position_size = float(pos.get("positionAmt", 0))
@@ -131,15 +118,11 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
                     if logs is not None:
                         logs.append(f"Fehler beim Parsen der Positionsgröße: {e}")
                 break
-
     else:
         if logs is not None:
             logs.append(f"API Antwort Fehlercode: {response.get('code')}")
 
     return position_size, raw_positions
-
-
-
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
@@ -206,17 +189,14 @@ def firebase_loesche_kaufpreise(asset, firebase_secret):
     else:
         return f"Fehler beim Löschen der Kaufpreise für {asset}: Status {response.status_code}"
 
-
 def firebase_lese_kaufpreise(asset, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
     response = requests.get(url)
     if response.status_code != 200:
         return None
-
     data = response.json()
     if not data:
         return []
-
     return [eintrag.get("price") for eintrag in data.values() if isinstance(eintrag, dict) and "price" in eintrag]
 
 def berechne_durchschnittspreis(preise):
@@ -239,82 +219,46 @@ def webhook():
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
-    logs.append(f"Starte Balance-Abfrage für {symbol}...")
-    balance_response = get_futures_balance(api_key, secret_key)
-    logs.append(f"Balance Antwort erhalten: {balance_response}")
-
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
-    # Warte 2 Sekunden, um Positionsdaten zu aktualisieren
     time.sleep(2)
     logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
         sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side, logs)
-        logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
-
-
-        # Falls kein Positionssize zurückkommt, Menge aus Market-Order nutzen
         if sell_quantity == 0:
             executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty")
             if executed_qty_str:
                 sell_quantity = float(executed_qty_str)
                 logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
-
     except Exception as e:
         sell_quantity = 0
-        logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
-
-
+        logs.append(f"Fehler bei Positionsabfrage: {e}")
 
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
-        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
+        logs.append(f"Open Orders: {open_orders}")
+        sell_limit_orders_exist = False
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
             for order in open_orders.get("data", {}).get("orders", []):
-                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
-                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
-        else:
-            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
-    except Exception as e:
-        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
-
-
-
-    # NEUER BLOCK: Prüfen, ob noch offene Sell-Limit-Orders existieren
-    try:
-        open_orders_after_cancel = get_open_orders(api_key, secret_key, symbol)
-        logs.append(f"Open Orders nach Stornierung: {open_orders_after_cancel}")
-
-        sell_limit_orders_exist = False
-
-        if isinstance(open_orders_after_cancel, dict) and open_orders_after_cancel.get("code") == 0:
-            orders = open_orders_after_cancel.get("data", {}).get("orders", [])
-            for order in orders:
-                if (
-                    order.get("side") == "SELL" 
-                    and order.get("positionSide") == "LONG"
-                    and order.get("type") == "LIMIT"
-                ):
+                if order.get("side") == "SELL" and order.get("positionSide") == "LONG" and order.get("type") == "LIMIT":
                     sell_limit_orders_exist = True
                     break
-        else:
-            logs.append(f"Fehler bei der Abfrage offener Orders nach Stornierung: {open_orders_after_cancel}")
-
         if not sell_limit_orders_exist and firebase_secret:
             base_asset = symbol.split("-")[0]
-            delete_msg = firebase_loesche_kaufpreise(base_asset, firebase_secret)
-            logs.append(delete_msg)
-
+            logs.append(firebase_loesche_kaufpreise(base_asset, firebase_secret))
     except Exception as e:
-        logs.append(f"Fehler beim Prüfen und Löschen der Kaufpreise: {e}")
-    
+        logs.append(f"Fehler bei Orderprüfung oder Kaufpreis-Löschung: {e}")
 
-    limit_order_response = None
+    try:
+        if firebase_secret and price_from_webhook:
+            base_asset = symbol.split("-")[0]
+            logs.append(firebase_speichere_kaufpreis(base_asset, float(price_from_webhook), firebase_secret))
+    except Exception as e:
+        logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
+
     durchschnittspreis = None
     kaufpreise = []
-
     if firebase_secret:
         try:
             base_asset = symbol.split("-")[0]
@@ -322,8 +266,18 @@ def webhook():
             durchschnittspreis = berechne_durchschnittspreis(kaufpreise or [])
             logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
         except Exception as e:
-            logs.append(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
+            logs.append(f"Fehler bei Durchschnittsberechnung: {e}")
 
+    try:
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+            for order in open_orders.get("data", {}).get("orders", []):
+                if order.get("side") == "SELL" and order.get("positionSide") == "LONG" and order.get("type") == "LIMIT":
+                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_response}")
+    except Exception as e:
+        logs.append(f"Fehler beim Löschen der Sell-Limit-Orders: {e}")
+
+    limit_order_response = None
     try:
         if price_from_webhook and sell_percentage:
             limit_price = round(float(price_from_webhook) * float(sell_percentage), 5)
@@ -332,28 +286,23 @@ def webhook():
         else:
             limit_price = 0
 
-        logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
-
         if sell_quantity > 0 and limit_price > 0:
             limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
-            logs.append(f"[Limit Order] Antwort: {limit_order_response}")
+            logs.append(f"Limit-Order gesetzt: {limit_order_response}")
         else:
-            logs.append("[Limit Order] Ungültige Orderdaten, Limit-Order nicht gesendet.")
+            logs.append("Ungültige Daten, keine Limit-Order gesetzt.")
     except Exception as e:
-        logs.append(f"[Limit Order] Fehler beim Platzieren: {e}")
+        logs.append(f"Fehler bei Limit-Order: {e}")
 
     return jsonify({
         "error": False,
-        "available_balances": balance_response.get("data", {}).get("balance", {}),
         "order_result": order_response,
         "limit_order_result": limit_order_response,
-        "order_params": {
-            "symbol": symbol,
-            "usdt_amount": usdt_amount,
-            "position_side": position_side,
-            "price_from_webhook": price_from_webhook,
-            "sell_percentage": sell_percentage
-        },
+        "symbol": symbol,
+        "usdt_amount": usdt_amount,
+        "sell_quantity": sell_quantity,
+        "price_from_webhook": price_from_webhook,
+        "sell_percentage": sell_percentage,
         "firebase_average_price": durchschnittspreis,
         "firebase_all_prices": kaufpreise,
         "logs": logs
