@@ -68,6 +68,34 @@ def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+def place_limit_sell_order(api_key: str, secret_key: str, symbol: str, quantity: float, limit_price: float, position_side: str = "SHORT"):
+    timestamp = int(time.time() * 1000)
+
+    params_dict = {
+        "symbol": symbol,
+        "side": "SELL",
+        "type": "LIMIT",
+        "quantity": round(quantity, 6),
+        "price": round(limit_price, 2),
+        "timeInForce": "GTC",
+        "positionSide": position_side,
+        "timestamp": timestamp
+    }
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
+
+
 # --- Firebase Funktion ---
 def firebase_speichere_kaufpreis(asset, price, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
@@ -93,6 +121,30 @@ def berechne_durchschnittspreis(preise: list):
     if not preise:
         return None
     return round(sum(preise) / len(preise), 4)
+
+    sell_percentage = data.get("sell_percentage")  # z. B. 5 für +5%
+    limit_order_response = None
+
+    if durchschnittspreis and sell_percentage and firebase_secret:
+        try:
+            # Preisaufschlag berechnen
+            limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
+
+            # Aktuellen Coin-Bestand abrufen
+            symbol_base = symbol.split("-")[0]  # z.B. BTC aus BTC-USDT
+            balances = balance_response.get("data", {}).get("balance", [])
+            asset_balance = next((item for item in balances if item.get("asset") == symbol_base), None)
+
+            if asset_balance and float(asset_balance.get("availableBalance", 0)) > 0:
+                coin_amount = float(asset_balance["availableBalance"])
+                limit_order_response = place_limit_sell_order(
+                    api_key, secret_key, symbol, coin_amount, limit_price
+                )
+            else:
+                print(f"[Limit Order] Kein verfügbares Guthaben für {symbol_base}")
+        except Exception as e:
+            print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
+
 
 
 # --- Webhook-Endpunkt ---
@@ -132,18 +184,21 @@ def webhook():
         except Exception as e:
             print(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
 
-    return jsonify({
+     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
         "order_result": order_response,
+        "limit_order_result": limit_order_response,
         "order_params": {
             "symbol": symbol,
             "usdt_amount": usdt_amount,
             "position_side": position_side,
-            "price_from_webhook": price_from_webhook
+            "price_from_webhook": price_from_webhook,
+            "sell_percentage": sell_percentage
         },
         "firebase_average_price": durchschnittspreis
     })
+
 
 
 # --- Flask App Start --- 
