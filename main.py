@@ -216,6 +216,7 @@ def webhook():
         except Exception as e:
             print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
 
+    
     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
@@ -228,8 +229,10 @@ def webhook():
             "price_from_webhook": price_from_webhook,
             "sell_percentage": sell_percentage
         },
-        "firebase_average_price": durchschnittspreis
+        "firebase_average_price": durchschnittspreis,
+        "firebase_all_prices": kaufpreise   # <---- Hier die komplette Liste hinzufügen
     })
+
 
 
 
