@@ -168,10 +168,10 @@ def webhook():
     balance_response = get_futures_balance(api_key, secret_key)
     logs.append(f"Balance Antwort erhalten: {balance_response}")
 
-# === Market-Order platzieren ===
-logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
-order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
-logs.append(f"Market-Order Antwort: {order_response}")
+    # === Market-Order platzieren ===
+    logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
+    order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
+    logs.append(f"Market-Order Antwort: {order_response}")
 
 # === Gekaufte Menge extrahieren ===
 try:
