@@ -184,7 +184,7 @@ def webhook():
         except Exception as e:
             print(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
 
-     return jsonify({
+    return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
         "order_result": order_response,
