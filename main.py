@@ -172,10 +172,13 @@ def webhook():
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
+    # 1. Kontostand abfragen (optional, z.B. für Debug)
     balance_response = get_futures_balance(api_key, secret_key)
+
+    # 2. Market-Order platzieren (Kauf)
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
-    # Preis aus Webhook speichern
+    # 3. Kaufpreis aus Webhook speichern, falls angegeben
     if firebase_secret and price_from_webhook is not None:
         try:
             price_to_store = float(price_from_webhook)
@@ -184,6 +187,7 @@ def webhook():
         except Exception as e:
             print(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
 
+    # 4. Durchschnittspreis aus Firebase ermitteln
     durchschnittspreis = None
     if firebase_secret:
         try:
@@ -195,21 +199,20 @@ def webhook():
 
     limit_order_response = None
 
-    # Limit-Sell-Order basierend auf sell_percentage und durchschnittspreis platzieren
+    # 5. Limit-Sell-Order basierend auf executedQty aus Market-Order platzieren
     if durchschnittspreis is not None and sell_percentage is not None and firebase_secret:
         try:
             limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
-            symbol_base = symbol.split("-")[0]
-            balances = balance_response.get("data", {}).get("balance", [])
-            asset_balance = next((item for item in balances if item.get("asset") == symbol_base), None)
 
-            if asset_balance and float(asset_balance.get("availableBalance", 0)) > 0:
-                coin_amount = float(asset_balance["availableBalance"])
+            # Menge aus der Market-Order Response verwenden (nicht aus Balance!)
+            executed_qty = float(order_response.get("data", {}).get("order", {}).get("executedQty", 0))
+
+            if executed_qty > 0:
                 limit_order_response = place_limit_sell_order(
-                    api_key, secret_key, symbol, coin_amount, limit_price, position_side="SHORT"
+                    api_key, secret_key, symbol, executed_qty, limit_price, position_side="SHORT"
                 )
             else:
-                print(f"[Limit Order] Kein verfügbares Guthaben für {symbol_base}")
+                print("[Limit Order] Keine ausgeführte Menge aus Market-Order gefunden, Limit-Order nicht platziert.")
         except Exception as e:
             print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
 
