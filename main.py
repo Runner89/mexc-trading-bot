@@ -66,7 +66,20 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
-def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="SHORT"):
+def get_current_position(api_key, secret_key, symbol, position_side):
+    endpoint = "/v2/private/position/list"
+    params = {
+        "symbol": symbol
+    }
+    # Hier brauchst du vermutlich eine Funktion zum signierten Request. Falls nicht vorhanden, bitte ergänzen.
+    response = send_signed_request("GET", endpoint, api_key, secret_key, params)
+    if isinstance(response, dict) and response.get("code") == 0:
+        for pos in response.get("data", []):
+            if pos.get("side") == position_side.upper():
+                return float(pos.get("size", 0))
+    return 0
+
+def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
 
     params_dict = {
@@ -164,11 +177,11 @@ def webhook():
     logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
-        executed_qty = float(order_response["data"]["order"]["executedQty"])
-        logs.append(f"[Market Order] Ausgeführte Menge: {executed_qty}")
+        sell_quantity = get_current_position(api_key, secret_key, symbol, position_side)
+        logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
     except Exception as e:
-        executed_qty = 0
-        logs.append(f"[Market Order] Fehler beim Lesen der ausgeführten Menge: {e}")
+        sell_quantity = 0
+        logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
 
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
@@ -197,17 +210,17 @@ def webhook():
             logs.append(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
 
     try:
-        if price_from_webhook:
+        if price_from_webhook and sell_percentage:
             limit_price = round(float(price_from_webhook) * float(sell_percentage), 5)
-        elif durchschnittspreis:
+        elif durchschnittspreis and sell_percentage:
             limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 5)
         else:
             limit_price = 0
 
-        logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge (executedQty): {executed_qty}")
+        logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
 
-        if executed_qty > 0 and limit_price > 0:
-            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, executed_qty, limit_price, position_side="LONG")
+        if sell_quantity > 0 and limit_price > 0:
+            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
             logs.append(f"[Limit Order] Antwort: {limit_order_response}")
         else:
             logs.append("[Limit Order] Ungültige Orderdaten, Limit-Order nicht gesendet.")
