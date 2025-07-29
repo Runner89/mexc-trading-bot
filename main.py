@@ -125,6 +125,9 @@ def berechne_durchschnittspreis(preise: list):
     sell_percentage = data.get("sell_percentage")  # z. B. 5 für +5%
     limit_order_response = None
 
+    # 💡 Verhindert NameError
+    limit_order_response = None
+    
     if durchschnittspreis and sell_percentage and firebase_secret:
         try:
             # Preisaufschlag berechnen
