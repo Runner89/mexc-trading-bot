@@ -214,9 +214,9 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    leverage = data.get("leverage", 1)  # Default ist 1, falls nicht angegeben
-    logs = []
     data = request.json
+    logs = []
+    leverage = data.get("leverage", 1)
     sell_percentage = data.get("sell_percentage")
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
