@@ -192,6 +192,12 @@ def cancel_order(api_key, secret_key, symbol, order_id):
     response = requests.delete(url, headers=headers)
     return response.json()
 
+def firebase_loesche_kaufpreise(asset, firebase_secret):
+    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+    response = requests.delete(url)
+    return response.status_code == 200
+
+
 def firebase_speichere_kaufpreis(asset, price, firebase_secret):
     url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
     data = {"price": price}
@@ -240,6 +246,35 @@ def webhook():
     # Warte 2 Sekunden, um Positionsdaten zu aktualisieren
     time.sleep(2)
     logs.append(f"Market-Order Antwort: {order_response}")
+
+
+    # 1. Prüfe offene Sell-Limit-Orders für den Coin
+    try:
+        open_orders = get_open_orders(api_key, secret_key, symbol)
+        sell_limit_exists = False
+        if open_orders.get("code") == 0:
+            orders = open_orders.get("data", {}).get("orders", [])
+            for order in orders:
+                if (order.get("side") == "SELL" and
+                    order.get("positionSide", "").upper() == position_side.upper()):
+                    sell_limit_exists = True
+                    break
+    except Exception as e:
+        sell_limit_exists = False
+        logs.append(f"Fehler beim Prüfen offener Orders: {e}")
+
+    # 2. Wenn Sell-Limit-Order existiert, dann Kaufpreise löschen
+    if sell_limit_exists and firebase_secret:
+        success = firebase_loesche_kaufpreise(base_asset, firebase_secret)
+        logs.append(f"[Firebase] Kaufpreise gelöscht: {success}")
+
+    # 3. Speichere dann den neuen Kaufpreis wie bisher
+    if firebase_secret and price_from_webhook:
+        try:
+            firebase_save_result = firebase_speichere_kaufpreis(base_asset, float(price_from_webhook), firebase_secret)
+            logs.append(f"[Firebase] Webhook-Preis gespeichert: {firebase_save_result}")
+        except Exception as e:
+            logs.append(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
 
     if firebase_secret and price_from_webhook:
         try:
