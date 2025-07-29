@@ -123,10 +123,10 @@ def berechne_durchschnittspreis(preise: list):
     return round(sum(preise) / len(preise), 4)
 
     sell_percentage = data.get("sell_percentage")  # z. B. 5 für +5%
-    limit_order_response = None
+    order_response = None
 
     # 💡 Verhindert NameError
-    limit_order_response = None
+    order_response = None
     
     if durchschnittspreis and sell_percentage and firebase_secret:
         try:
@@ -140,7 +140,7 @@ def berechne_durchschnittspreis(preise: list):
 
             if asset_balance and float(asset_balance.get("availableBalance", 0)) > 0:
                 coin_amount = float(asset_balance["availableBalance"])
-                limit_order_response = place_limit_sell_order(
+                order_response = place_limit_sell_order(
                     api_key, secret_key, symbol, coin_amount, limit_price
                 )
             else:
@@ -191,7 +191,7 @@ def webhook():
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
         "order_result": order_response,
-        "limit_order_result": limit_order_response,
+        "limit_order_result": order_response,
         "order_params": {
             "symbol": symbol,
             "usdt_amount": usdt_amount,
