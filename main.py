@@ -163,13 +163,7 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     }
 
     response = requests.post(url, headers=headers, json=params_dict)
-
-    try:
-        return response.json()
-    except Exception:
-        # Falls Antwort kein JSON ist, gib den Text zurück (zur Fehlersuche)
-        return {"code": -1, "msg": "Kein JSON in API-Antwort", "response_text": response.text}
-
+    return response.json()
 
 def get_open_orders(api_key, secret_key, symbol):
     timestamp = int(time.time() * 1000)
