@@ -168,22 +168,52 @@ def webhook():
     balance_response = get_futures_balance(api_key, secret_key)
     logs.append(f"Balance Antwort erhalten: {balance_response}")
 
-    logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
-    order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
-    logs.append(f"Market-Order Antwort: {order_response}")
+# === Market-Order platzieren ===
+logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
+order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
+logs.append(f"Market-Order Antwort: {order_response}")
 
-    try:
-        open_orders = get_open_orders(api_key, secret_key, symbol)
-        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
-        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
-            for order in open_orders.get("data", {}).get("orders", []):
-                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
-                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
-        else:
-            logs.append(f"Open Orders Antwort unerwartet oder Fehler: {open_orders}")
-    except Exception as e:
-        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
+# === Gekaufte Menge extrahieren ===
+try:
+    executed_qty = float(order_response["data"]["order"]["executedQty"])
+    logs.append(f"[Market Order] Ausgeführte Menge: {executed_qty}")
+except Exception as e:
+    executed_qty = 0
+    logs.append(f"[Market Order] Fehler beim Lesen der ausgeführten Menge: {e}")
+
+# === Alte SELL-Orders stornieren (wenn vorhanden) ===
+try:
+    open_orders = get_open_orders(api_key, secret_key, symbol)
+    logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
+    if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+        for order in open_orders.get("data", {}).get("orders", []):
+            if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
+                cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+    else:
+        logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
+except Exception as e:
+    logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
+
+# === Limit-Preis berechnen (z. B. 1.5x vom Market-Kaufpreis) ===
+limit_price = round(float(price_from_webhook) * sell_percentage, 5)
+logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge (executedQty): {executed_qty}")
+
+# === SELL-Limit-Order mit exakter Menge platzieren ===
+try:
+    limit_order_result = place_limit_order(
+        api_key=api_key,
+        secret_key=secret_key,
+        symbol=symbol,
+        quantity=executed_qty,
+        price=limit_price,
+        position_side="LONG"
+    )
+    logs.append(f"[Limit Order] Antwort: {limit_order_result}")
+    logs.append("Limit-Order erfolgreich platziert!")
+except Exception as e:
+    limit_order_result = {"error": True, "msg": str(e)}
+    logs.append(f"[Limit Order] Fehler: {e}")
 
 
     durchschnittspreis = None
