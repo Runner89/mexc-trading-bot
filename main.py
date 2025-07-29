@@ -209,6 +209,7 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
         "symbol": symbol,
         "leverage": int(leverage),
         "positionSide": position_side.upper()
+        "side": position_side.upper()  # zusätzlich 'side' hinzufügen
     }
     return send_signed_request("POST", endpoint, api_key, secret_key, params)
 
