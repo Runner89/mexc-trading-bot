@@ -176,7 +176,7 @@ def webhook():
         open_orders = get_open_orders(api_key, secret_key, symbol)
         logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
-            for order in open_orders.get("data", []):
+            for order in open_orders.get("data", {}).get("orders", []):
                 if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
@@ -229,7 +229,7 @@ def webhook():
         open_orders = get_open_orders(api_key, secret_key, symbol)
         logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
         if isinstance(open_orders, dict) and open_orders.get("code") == 0:
-            for order in open_orders.get("data", []):
+            for order in open_orders.get("data", {}).get("orders", []):
                 if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
