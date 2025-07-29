@@ -99,22 +99,6 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
     return response.json()
 
-def cancel_existing_sell_limit_orders(api_key, secret_key, symbol, position_side="LONG"):
-    open_orders_response = get_open_orders(api_key, secret_key, symbol)
-    if open_orders_response.get("code") != 0:
-        return f"Fehler beim Abrufen offener Orders: {open_orders_response.get('msg')}"
-    
-    orders = open_orders_response.get("data", [])
-    cancelled_orders = []
-    for order in orders:
-        if (order.get("side") == "SELL" and order.get("type") == "LIMIT" and 
-            order.get("positionSide", "").upper() == position_side.upper()):
-            order_id = order.get("orderId") or order.get("orderID")
-            cancel_response = cancel_order(api_key, secret_key, symbol, order_id)
-            cancelled_orders.append(order_id)
-    return cancelled_orders
-
-
 
 def get_current_position(api_key, secret_key, symbol, position_side):
     endpoint = "/openApi/swap/v2/position/list"
@@ -163,14 +147,7 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     }
 
     response = requests.post(url, headers=headers, json=params_dict)
-
-    try:
-        return response.json()
-    except ValueError:
-        print(f"Limit order response nicht JSON:\n{response.text}")
-        return {"code": -1, "msg": "Invalid JSON response", "raw_response": response.text}
-
-
+    return response.json()
 
 def get_open_orders(api_key, secret_key, symbol):
     timestamp = int(time.time() * 1000)
@@ -240,30 +217,39 @@ def webhook():
 
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
-    logs.append(f"Market-Order Antwort: {order_response}")
-
     # Warte 2 Sekunden, um Positionsdaten zu aktualisieren
     time.sleep(2)
+    logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
-        sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
+        sell_quantity = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
-        logs.append(f"[Market Order] Positions Rohdaten: {positions_raw}")
 
-        # Falls Position 0, dann Menge aus Market-Order Antwort versuchen zu holen
+        # Falls kein Positionssize zurückkommt, Menge aus Market-Order nutzen
         if sell_quantity == 0:
             executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty")
-            if executed_qty_str is not None:
-                try:
-                    sell_quantity = float(executed_qty_str)
-                    logs.append(f"[Market Order] Ausgeführte Menge aus order_response verwendet: {sell_quantity}")
-                except Exception as e:
-                    logs.append(f"[Market Order] Fehler beim Parsen von executedQty: {e}")
+            if executed_qty_str:
+                sell_quantity = float(executed_qty_str)
+                logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
 
     except Exception as e:
         sell_quantity = 0
         logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
 
+
+
+    try:
+        open_orders = get_open_orders(api_key, secret_key, symbol)
+        logs.append(f"Open Orders Rohdaten: {open_orders} (Typ: {type(open_orders)})")
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+            for order in open_orders.get("data", {}).get("orders", []):
+                if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
+                    cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
+        else:
+            logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
+    except Exception as e:
+        logs.append(f"Fehler beim Abfragen oder Stornieren offener Orders: {e}")
 
     limit_order_response = None
     durchschnittspreis = None
@@ -289,17 +275,8 @@ def webhook():
         logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
 
         if sell_quantity > 0 and limit_price > 0:
-            cancelled = cancel_existing_sell_limit_orders(api_key, secret_key, symbol, position_side)
-            logs.append(f"Gelöschte alte Sell Limit Orders: {cancelled}")
-        
-            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side=position_side)
-        
-            if isinstance(limit_order_response, dict):
-                logs.append(f"[Limit Order] Antwort: {limit_order_response}")
-            else:
-                # Falls limit_order_response doch ein String ist
-                logs.append(f"[Limit Order] Antwort kein dict, raw response: {limit_order_response}")
-
+            limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
+            logs.append(f"[Limit Order] Antwort: {limit_order_response}")
         else:
             logs.append("[Limit Order] Ungültige Orderdaten, Limit-Order nicht gesendet.")
     except Exception as e:
