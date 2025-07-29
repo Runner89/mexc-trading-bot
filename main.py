@@ -90,34 +90,31 @@ def webhook():
     if not (api_key and secret_key and firebase_secret and usdt_amount and price_for_avg):
         return jsonify({"error": True, "msg": "api_key, secret_key, FIREBASE_SECRET, usdt_amount und price sind erforderlich"}), 400
 
-    # Asset aus Symbol ableiten, z.B. BTC aus BTC-USDT
     asset = symbol.split("-")[0]
 
-    # Preis aus Webhook in Firebase speichern
     try:
         price_float = float(price_for_avg)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": True, "msg": "Ungültiger Preis im Webhook"}), 400
 
     gespeichert = firebase_speichere_kaufpreis(asset, price_float, firebase_secret)
     if not gespeichert:
         return jsonify({"error": True, "msg": "Fehler beim Speichern des Preises in Firebase"}), 500
 
-    # Durchschnittspreis berechnen
     kaufpreise_liste = firebase_hole_kaufpreise(asset, firebase_secret)
     durchschnittspreis = berechne_durchschnitt_preis(kaufpreise_liste)
 
-    # Marktorder öffnen
     order_result = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
     return jsonify({
         "error": False,
         "message": "Long Position eröffnet",
         "order_result": order_result,
-        "durchschnittspreis_firebase": durchschnittspreis,
+        "durchschnittspreis_firebase": durchschnittspreis if durchschnittspreis is not None else "keine Daten",
         "preis_aus_webhook": price_float,
         "kaufpreise_alle": kaufpreise_liste
     })
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
