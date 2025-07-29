@@ -161,13 +161,9 @@ def webhook():
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
-    # 1. Kontostand abfragen (optional, z.B. für Debug)
     balance_response = get_futures_balance(api_key, secret_key)
-
-    # 2. Market-Order platzieren (Kauf)
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
-    # 3. Kaufpreis aus Webhook speichern, falls angegeben
     if firebase_secret and price_from_webhook is not None:
         try:
             price_to_store = float(price_from_webhook)
@@ -176,7 +172,6 @@ def webhook():
         except Exception as e:
             print(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
 
-    # 4. Durchschnittspreis aus Firebase ermitteln
     durchschnittspreis = None
     kaufpreise = []
     if firebase_secret:
@@ -189,33 +184,18 @@ def webhook():
 
     limit_order_response = None
 
-    # --- NEU: Vor Platzieren der Limit-Sell-Order alle offenen Sell-Limit-Orders löschen ---
     if durchschnittspreis is not None and sell_percentage is not None and firebase_secret:
         try:
-            # Alle offenen Orders holen
-            open_orders_response = get_open_orders(api_key, secret_key, symbol)
-
-            if open_orders_response.get("code") == 0:
-                orders = open_orders_response.get("data", [])
-                for order in orders:
-                    # Nur Sell LIMIT Orders löschen
-                    if order.get("side") == "SELL" and order.get("type") == "LIMIT":
-                        order_id = order.get("orderId")
-                        cancel_resp = cancel_order(api_key, secret_key, symbol, order_id)
-                        print(f"[Cancel Order] Order {order_id} gelöscht: {cancel_resp}")
-            else:
-                print("[Cancel Order] Fehler beim Abrufen offener Orders:", open_orders_response)
-
             limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
-
-            # Menge aus der Market-Order Response verwenden (nicht aus Balance!)
             executed_qty = float(order_response.get("data", {}).get("order", {}).get("executedQty", 0))
 
+            print(f"[Limit Order] Limit-Preis: {limit_price}, Ausgeführte Menge: {executed_qty}")
+
             if executed_qty > 0:
-                # Limit-Sell-Order zum Schließen der Long-Position
                 limit_order_response = place_limit_sell_order(
                     api_key, secret_key, symbol, executed_qty, limit_price, position_side="LONG"
                 )
+                print(f"[Limit Order] Antwort: {limit_order_response}")
             else:
                 print("[Limit Order] Keine ausgeführte Menge aus Market-Order gefunden, Limit-Order nicht platziert.")
         except Exception as e:
