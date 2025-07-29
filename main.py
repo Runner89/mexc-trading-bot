@@ -222,7 +222,7 @@ def webhook():
     logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
-        sell_quantity = get_current_position(api_key, secret_key, symbol, position_side)
+        sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
 
         # Falls kein Positionssize zurückkommt, Menge aus Market-Order nutzen
