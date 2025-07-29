@@ -102,25 +102,42 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
     return response.json()
 
 
-def get_current_position(api_key, secret_key, symbol, position_side):
+def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = "/openApi/swap/v2/user/positions"
     params = {"symbol": symbol}
     response = send_signed_request("GET", endpoint, api_key, secret_key, params)
-    
+
     positions = response.get("data", [])
-    # Rohdaten zurückgeben (für Logs)
     raw_positions = positions if isinstance(positions, list) else []
+
+    if logs is not None:
+        logs.append(f"Positions Rohdaten: {raw_positions}")
 
     position_size = 0
     if response.get("code") == 0:
         for pos in positions:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                if logs is not None:
+                    logs.append(f"Gefundene Position: {pos}")
                 try:
+                    # Versuche verschiedene Felder
                     position_size = float(pos.get("size", 0))
-                except (ValueError, TypeError):
+                    if position_size == 0:
+                        position_size = float(pos.get("positionAmt", 0))
+                    if logs is not None:
+                        logs.append(f"Position size ermittelt: {position_size}")
+                except (ValueError, TypeError) as e:
                     position_size = 0
+                    if logs is not None:
+                        logs.append(f"Fehler beim Parsen der Positionsgröße: {e}")
+                break
+
+    else:
+        if logs is not None:
+            logs.append(f"API Antwort Fehlercode: {response.get('code')}")
 
     return position_size, raw_positions
+
 
 
 
@@ -224,8 +241,9 @@ def webhook():
     logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
-        sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
+        sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side, logs)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
+
 
         # Falls kein Positionssize zurückkommt, Menge aus Market-Order nutzen
         if sell_quantity == 0:
