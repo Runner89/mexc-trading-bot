@@ -217,25 +217,15 @@ def webhook():
 
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
-    # Warte 2 Sekunden, um Positionsdaten zu aktualisieren
-    time.sleep(2)
+    time.sleep(3)
+    
     logs.append(f"Market-Order Antwort: {order_response}")
 
-    try:
-        sell_quantity, position_raw = get_current_position(api_key, secret_key, symbol, position_side)
+    # Neue Position nach Order abrufen
+    sell_quantity, position_raw = get_current_position(api_key, secret_key, symbol, position_side)
+    logs.append(f"[Position] Ermittelte Positionsgröße: {sell_quantity}")
 
-        logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
-
-        # Falls kein Positionssize zurückkommt, Menge aus Market-Order nutzen
-        if sell_quantity == 0:
-            executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty")
-            if executed_qty_str:
-                sell_quantity = float(executed_qty_str)
-                logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
-
-    except Exception as e:
-        sell_quantity = 0
-        logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
+  
 
 
 
