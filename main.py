@@ -157,14 +157,13 @@ def webhook():
     data = request.json
     sell_percentage = data.get("sell_percentage")
 
-
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
     symbol = data.get("symbol", "BTC-USDT")
     usdt_amount = data.get("usdt_amount")
     position_side = data.get("position_side") or data.get("positionSide") or "LONG"
     firebase_secret = data.get("FIREBASE_SECRET")
-    price_from_webhook = data.get("price")  # <-- Preis aus Webhook
+    price_from_webhook = data.get("price")
 
     if not api_key or not secret_key or not usdt_amount:
         return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
@@ -172,11 +171,11 @@ def webhook():
     balance_response = get_futures_balance(api_key, secret_key)
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
-    # 🔥 Preis aus Webhook speichern
+    # Preis aus Webhook speichern
     if firebase_secret and price_from_webhook is not None:
         try:
             price_to_store = float(price_from_webhook)
-            base_asset = symbol.split("-")[0]  # z. B. BTC aus BTC-USDT
+            base_asset = symbol.split("-")[0]
             firebase_speichere_kaufpreis(base_asset, price_to_store, firebase_secret)
         except Exception as e:
             print(f"[Firebase] Fehler beim Speichern des Webhook-Preises: {e}")
@@ -190,11 +189,31 @@ def webhook():
         except Exception as e:
             print(f"[Firebase] Fehler beim Berechnen des Durchschnittspreises: {e}")
 
+    limit_order_response = None
+
+    # Limit-Sell-Order basierend auf sell_percentage und durchschnittspreis platzieren
+    if durchschnittspreis is not None and sell_percentage is not None and firebase_secret:
+        try:
+            limit_price = durchschnittspreis * (1 + float(sell_percentage) / 100)
+            symbol_base = symbol.split("-")[0]
+            balances = balance_response.get("data", {}).get("balance", [])
+            asset_balance = next((item for item in balances if item.get("asset") == symbol_base), None)
+
+            if asset_balance and float(asset_balance.get("availableBalance", 0)) > 0:
+                coin_amount = float(asset_balance["availableBalance"])
+                limit_order_response = place_limit_sell_order(
+                    api_key, secret_key, symbol, coin_amount, limit_price, position_side="SHORT"
+                )
+            else:
+                print(f"[Limit Order] Kein verfügbares Guthaben für {symbol_base}")
+        except Exception as e:
+            print(f"[Limit Order] Fehler beim Platzieren der Limit-Order: {e}")
+
     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
         "order_result": order_response,
-        "limit_order_result": order_response,
+        "limit_order_result": limit_order_response,
         "order_params": {
             "symbol": symbol,
             "usdt_amount": usdt_amount,
@@ -204,6 +223,7 @@ def webhook():
         },
         "firebase_average_price": durchschnittspreis
     })
+
 
 
 
