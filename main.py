@@ -1,3 +1,5 @@
+# Long Position auf Bingx wird eröffnet
+
 from flask import Flask, request, jsonify
 import time
 import hmac
@@ -8,6 +10,7 @@ app = Flask(__name__)
 
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
+ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"  # ✅ KORRIGIERT
 PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
 
 def generate_signature(secret_key: str, params: str) -> str:
@@ -22,13 +25,47 @@ def get_futures_balance(api_key: str, secret_key: str):
     response = requests.get(url, headers=headers)
     return response.json()
 
-def measure_latency(symbol: str):
-    url = f"{BASE_URL}{PRICE_ENDPOINT}?symbol={symbol}"
-    start = time.time()
+def get_current_price(symbol: str):
+    url = f"{BASE_URL}/openApi/swap/v2/quote/price?symbol={symbol}"
     response = requests.get(url)
-    end = time.time()
-    latency_ms = round((end - start) * 1000, 2)
-    return latency_ms, response.json()
+    data = response.json()
+    if data.get("code") == 0 and "data" in data and "price" in data["data"]:
+        return float(data["data"]["price"])
+    else:
+        print("❌ Price response error:", data)
+        return None
+
+def place_market_order(api_key: str, secret_key: str, symbol: str, usdt_amount: float, position_side: str = "LONG"):
+    price = get_current_price(symbol)
+    if price is None:
+        return {"code": 99999, "msg": "Failed to get current price"}
+
+    quantity = round(usdt_amount / price, 6)
+    timestamp = int(time.time() * 1000)
+
+    params_dict = {
+        "symbol": symbol,
+        "side": "BUY",
+        "type": "MARKET",
+        "quantity": quantity,
+        "positionSide": position_side,
+        "timestamp": timestamp
+    }
+
+    # Signatur berechnen (alphabetisch sortierte Parameter)
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -36,18 +73,24 @@ def webhook():
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
     symbol = data.get("symbol", "BTC-USDT")
+    usdt_amount = data.get("usdt_amount")
+    position_side = data.get("position_side") or data.get("positionSide") or "LONG"
 
-    if not api_key or not secret_key:
-        return jsonify({"error": True, "msg": "api_key and secret_key are required"}), 400
+    if not api_key or not secret_key or not usdt_amount:
+        return jsonify({"error": True, "msg": "api_key, secret_key and usdt_amount are required"}), 400
 
     balance_response = get_futures_balance(api_key, secret_key)
-    latency_ms, price_response = measure_latency(symbol)
+    order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
 
     return jsonify({
         "error": False,
         "available_balances": balance_response.get("data", {}).get("balance", {}),
-        "latency_ms": latency_ms,
-        "price_response": price_response
+        "order_result": order_response,
+        "order_params": {
+            "symbol": symbol,
+            "usdt_amount": usdt_amount,
+            "position_side": position_side
+        }
     })
 
 if __name__ == '__main__':
