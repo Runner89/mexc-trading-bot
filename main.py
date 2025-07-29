@@ -246,6 +246,7 @@ def webhook():
             for order in open_orders.get("data", {}).get("orders", []):
                 if order.get("side") == "SELL" and order.get("positionSide") == "LONG":
                     cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    time.sleep(1)
                     logs.append(f"Storniere Order {order.get('orderId')}: {cancel_response}")
         else:
             logs.append(f"Open Orders Antwort unerwartet: {open_orders}")
