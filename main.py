@@ -102,16 +102,24 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
 def get_current_position(api_key, secret_key, symbol, position_side):
     endpoint = "/openApi/swap/v2/position/list"
-    params = {
-        "symbol": symbol
-    }
+    params = {"symbol": symbol}
     response = send_signed_request("GET", endpoint, api_key, secret_key, params)
+    
+    positions = response.get("data", [])
+    # Rohdaten zurückgeben (für Logs)
+    raw_positions = positions if isinstance(positions, list) else []
+
+    position_size = 0
     if response.get("code") == 0:
-        positions = response.get("data", [])
         for pos in positions:
-            if pos.get("positionSide", "").upper() == position_side.upper():
-                return float(pos.get("size", 0))
-    return 0
+            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                try:
+                    position_size = float(pos.get("size", 0))
+                except (ValueError, TypeError):
+                    position_size = 0
+
+    return position_size, raw_positions
+
 
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
@@ -212,11 +220,13 @@ def webhook():
     logs.append(f"Market-Order Antwort: {order_response}")
 
     try:
-        sell_quantity = get_current_position(api_key, secret_key, symbol, position_side)
+        sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
+        logs.append(f"[Market Order] Positions Rohdaten: {positions_raw}")
     except Exception as e:
         sell_quantity = 0
         logs.append(f"[Market Order] Fehler beim Lesen der Positionsgröße: {e}")
+
 
     try:
         open_orders = get_open_orders(api_key, secret_key, symbol)
