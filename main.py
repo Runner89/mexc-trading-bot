@@ -219,6 +219,9 @@ def webhook():
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
     logs.append(f"Market-Order Antwort: {order_response}")
 
+    # Warte 2 Sekunden, um Positionsdaten zu aktualisieren
+    time.sleep(2)
+
     try:
         sell_quantity, positions_raw = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"[Market Order] Ausgeführte Menge (Position Size): {sell_quantity}")
