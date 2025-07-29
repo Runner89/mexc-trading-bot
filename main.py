@@ -183,15 +183,6 @@ def get_open_orders(api_key, secret_key, symbol):
 
     return data
 
-def has_open_sell_limit_order_bingx(api_key, secret_key, symbol):
-    orders = get_open_orders(api_key, secret_key, symbol)
-    if not isinstance(orders, list):
-        print("Fehler bei der API-Antwort:", orders)
-        return False
-    for order in orders:
-        if order.get("side") == "SELL" and order.get("type") == "LIMIT":
-            return True
-    return False
 
 def cancel_order(api_key, secret_key, symbol, order_id):
     timestamp = int(time.time() * 1000)
@@ -322,7 +313,7 @@ def webhook():
     base_asset = symbol.split("/")[0] if "/" in symbol else symbol.replace("USDT", "")
 
     # Hier prüfen, ob offene Sell-Limit-Orders existieren:
-    offene_position = has_open_sell_limit_order(symbol, api_key, secret_key)
+    offene_position = has_open_sell_limit_order_bingx(symbol, api_key, secret_key)
 
     if not offene_position:
         firebase_loesche_kaufpreise(base_asset, firebase_secret)
