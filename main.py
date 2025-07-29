@@ -155,6 +155,8 @@ def berechne_durchschnittspreis(preise: list):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
+    sell_percentage = data.get("sell_percentage")
+
 
     api_key = data.get("api_key")
     secret_key = data.get("secret_key")
