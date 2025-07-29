@@ -163,10 +163,14 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     }
 
     response = requests.post(url, headers=headers, json=params_dict)
+
     try:
-        return response.json()
+        json_response = response.json()
+        return json_response
     except ValueError:
+        # JSON konnte nicht geparst werden: gib raw Text zurück
         return {"code": -1, "msg": "Invalid JSON response", "raw_response": response.text}
+
 
 
 def get_open_orders(api_key, secret_key, symbol):
