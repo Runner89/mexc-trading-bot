@@ -17,6 +17,9 @@ OPEN_ORDERS_ENDPOINT = "/openApi/swap/v2/trade/openOrders"
 
 FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 
+debug_info = {}
+debug_info["ase_loeschen"] = True
+
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
 
