@@ -289,19 +289,17 @@ def webhook():
     except Exception as e:
         logs.append(f"Fehler beim Löschen der Sell-Limit-Orders: {e}")
 
-    # 8. Neue Limit-Order setzen
+    # 8. Neue Limit-Order setzen (nur mit Durchschnittspreis)
     limit_order_response = None
     try:
-        if price_from_webhook and sell_percentage:
-            limit_price = round(float(price_from_webhook) * (1 + float(sell_percentage) / 100), 5)
-        elif durchschnittspreis and sell_percentage:
+        if durchschnittspreis and sell_percentage:
             limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 5)
         else:
             limit_price = 0
 
         if sell_quantity > 0 and limit_price > 0:
             limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
-            logs.append(f"Limit-Order gesetzt: {limit_order_response}")
+            logs.append(f"Limit-Order gesetzt (auf Basis Durchschnittspreis {durchschnittspreis}): {limit_order_response}")
         else:
             logs.append("Ungültige Daten, keine Limit-Order gesetzt.")
     except Exception as e:
