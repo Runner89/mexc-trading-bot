@@ -99,6 +99,22 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
     return response.json()
 
+def cancel_existing_sell_limit_orders(api_key, secret_key, symbol, position_side="LONG"):
+    open_orders_response = get_open_orders(api_key, secret_key, symbol)
+    if open_orders_response.get("code") != 0:
+        return f"Fehler beim Abrufen offener Orders: {open_orders_response.get('msg')}"
+    
+    orders = open_orders_response.get("data", [])
+    cancelled_orders = []
+    for order in orders:
+        if (order.get("side") == "SELL" and order.get("type") == "LIMIT" and 
+            order.get("positionSide", "").upper() == position_side.upper()):
+            order_id = order.get("orderId") or order.get("orderID")
+            cancel_response = cancel_order(api_key, secret_key, symbol, order_id)
+            cancelled_orders.append(order_id)
+    return cancelled_orders
+
+
 
 def get_current_position(api_key, secret_key, symbol, position_side):
     endpoint = "/openApi/swap/v2/position/list"
@@ -266,6 +282,10 @@ def webhook():
         logs.append(f"[Limit Order] Limit-Preis: {limit_price}, Verkaufsmenge: {sell_quantity}")
 
         if sell_quantity > 0 and limit_price > 0:
+            # Vorher alle offenen Sell Limit Orders löschen
+            cancelled = cancel_existing_sell_limit_orders(api_key, secret_key, symbol, position_side)
+            logs.append(f"Gelöschte alte Sell Limit Orders: {cancelled}")
+            
             limit_order_response = place_limit_sell_order(api_key, secret_key, symbol, sell_quantity, limit_price, position_side="LONG")
             logs.append(f"[Limit Order] Antwort: {limit_order_response}")
         else:
