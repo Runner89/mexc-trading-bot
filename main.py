@@ -122,7 +122,8 @@ def berechne_durchschnittspreis(preise: list):
         return None
     return round(sum(preise) / len(preise), 4)
 
-    sell_percentage = data.get("sell_percentage")  # z. B. 5 für +5%
+    data = request.json  # oder request.get_json()
+    sell_percentage = data.get('sell_percentage')
     order_response = None
 
     # 💡 Verhindert NameError
