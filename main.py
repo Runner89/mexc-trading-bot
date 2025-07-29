@@ -208,8 +208,9 @@ def webhook():
             executed_qty = float(order_response.get("data", {}).get("order", {}).get("executedQty", 0))
 
             if executed_qty > 0:
+                # Limit-Sell-Order zum Schließen der Long-Position
                 limit_order_response = place_limit_sell_order(
-                    api_key, secret_key, symbol, executed_qty, limit_price, position_side="SHORT"
+                    api_key, secret_key, symbol, executed_qty, limit_price, position_side="LONG"
                 )
             else:
                 print("[Limit Order] Keine ausgeführte Menge aus Market-Order gefunden, Limit-Order nicht platziert.")
