@@ -144,9 +144,11 @@ def webhook():
         return jsonify({"error": True, "msg": "api_key, secret_key und FIREBASE_SECRET sind erforderlich"}), 400
 
     # ⚙️ Fallback-Defaults
-    symbol = data["symbol"]
+    data = request.get_json()
+    symbol = data.get("symbol")  # Symbol aus JSON speichern
     position_side = "LONG"
 
+base_asset = symbol.split("-")[0]
 
     base_asset = symbol.split("-")[0]
     aktueller_preis = get_current_price(symbol)
