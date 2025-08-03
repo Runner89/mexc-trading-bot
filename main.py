@@ -346,10 +346,11 @@ def webhook():
         logs.append(f"Fehler beim Lesen/Berechnen der Kaufpreise: {e}")
 
     # 4. Positionsgröße in USDT berechnen (Menge * Durchschnittspreis)
+    position_value = float(position_data.get('positionValue', 0))
+    
     position_in_usdt = None
-    if sell_quantity and durchschnittspreis:
-        position_in_usdt = round(positionValue, 2)
-        logs.append(f"Positionsgröße in USDT: {position_in_usdt}")
+    position_in_usdt = round(position_value, 2)
+    logs.append(f"Positionsgröße in USDT: {position_in_usdt}")
 
     # 5. Sell-Limit-Order Position (Preis) ermitteln
     limit_order_price = None
