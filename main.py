@@ -161,28 +161,6 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     return position_size, position_value, raw_positions
 
 
-    position_size = 0
-    if response.get("code") == 0:
-        for pos in positions:
-            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
-                if logs is not None:
-                    logs.append(f"Gefundene Position: {pos}")
-                try:
-                    position_size = float(pos.get("size", 0))
-                    if position_size == 0:
-                        position_size = float(pos.get("positionAmt", 0))
-                    if logs is not None:
-                        logs.append(f"Position size (Coin): {position_size}")
-                except (ValueError, TypeError) as e:
-                    position_size = 0
-                    if logs is not None:
-                        logs.append(f"Fehler beim Parsen der Positionsgröße: {e}")
-                break
-    else:
-        if logs is not None:
-            logs.append(f"API Antwort Fehlercode: {response.get('code')}")
-
-    return position_size, raw_positions
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
