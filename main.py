@@ -140,7 +140,7 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
                     if position_size == 0:
                         position_size = float(pos.get("positionAmt", 0))
                     if logs is not None:
-                        logs.append(f"Position size ermittelt: {position_size}")
+                        logs.append(f"Position size (Coin): {position_size}")
                 except (ValueError, TypeError) as e:
                     position_size = 0
                     if logs is not None:
