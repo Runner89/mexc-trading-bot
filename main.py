@@ -130,6 +130,38 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
         logs.append(f"Positions Rohdaten: {raw_positions}")
 
     position_size = 0
+    position_value = 0  # neu
+
+    if response.get("code") == 0:
+        for pos in positions:
+            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                if logs is not None:
+                    logs.append(f"Gefundene Position: {pos}")
+                try:
+                    position_size = float(pos.get("size", 0))
+                    if position_size == 0:
+                        position_size = float(pos.get("positionAmt", 0))
+
+                    position_value_str = pos.get("positionValue", "0")
+                    position_value = float(position_value_str)
+                    
+                    if logs is not None:
+                        logs.append(f"Position size (Coin): {position_size}")
+                        logs.append(f"Position value (USDT): {position_value}")
+                except (ValueError, TypeError) as e:
+                    position_size = 0
+                    position_value = 0
+                    if logs is not None:
+                        logs.append(f"Fehler beim Parsen der Positionsdaten: {e}")
+                break
+    else:
+        if logs is not None:
+            logs.append(f"API Antwort Fehlercode: {response.get('code')}")
+
+    return position_size, position_value, raw_positions
+
+
+    position_size = 0
     if response.get("code") == 0:
         for pos in positions:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
@@ -318,12 +350,16 @@ def webhook():
 
     base_asset = symbol.split("-")[0]
 
-    # 1. Positionsgröße ermitteln (in Menge)
+    # 1. Positionsgröße und Positionswert ermitteln
     sell_quantity = 0
+    position_value = 0
     try:
-        sell_quantity, _ = get_current_position(api_key, secret_key, symbol, position_side, logs)
+        sell_quantity, position_value, _ = get_current_position(api_key, secret_key, symbol, position_side, logs)
     except Exception as e:
         logs.append(f"Fehler bei Positionsabfrage: {e}")
+
+    position_in_usdt = round(position_value, 2)
+    logs.append(f"Positionsgröße in USDT: {position_in_usdt}")
 
     # 2. Aktuellen Preis abfragen
     current_price = None
