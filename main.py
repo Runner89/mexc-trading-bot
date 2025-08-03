@@ -336,7 +336,13 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    # Assuming you receive JSON data with a 'positionData' field
     data = request.json
+    position_data = data.get('positionData', {})
+
+    # Now use position_data safely
+    position_value = float(position_data.get('positionValue', 0))
+
     logs = []
 
     api_key = data.get("api_key")
@@ -344,6 +350,8 @@ def webhook():
     symbol = data.get("symbol", "BTC-USDT")
     position_side = data.get("position_side") or data.get("positionSide") or "LONG"
     firebase_secret = data.get("FIREBASE_SECRET")
+
+    
 
     if not api_key or not secret_key:
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
