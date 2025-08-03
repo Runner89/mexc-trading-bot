@@ -144,7 +144,7 @@ def webhook():
         return jsonify({"error": True, "msg": "api_key, secret_key und FIREBASE_SECRET sind erforderlich"}), 400
 
     # ⚙️ Fallback-Defaults
-    data.get("symbol")
+    symbol = data["symbol"]
     position_side = "LONG"
 
 
