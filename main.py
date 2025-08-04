@@ -20,7 +20,8 @@
 #    "FIREBASE_SECRET": "",
 #    "alarm": 1,
 #    "pyramiding": 8,
-#    "sicherheit": 96
+#    "sicherheit": 96,
+#    "vyn": "ja"   wird bei vyn ja angegeben, wird die andere Firebase-url genommen
 #}
 
 from flask import Flask, request, jsonify
@@ -37,7 +38,7 @@ BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
 ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"
 PRICE_ENDPOINT = "/openApi/swap/v2/quote/price"
 OPEN_ORDERS_ENDPOINT = "/openApi/swap/v2/trade/openOrders"
-FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
+
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -237,14 +238,14 @@ def cancel_order(api_key, secret_key, symbol, order_id):
     response = requests.delete(url, headers=headers)
     return response.json()
 
-def firebase_speichere_ordergroesse(asset, betrag, firebase_secret):
-    url = f"{FIREBASE_URL}/ordergroesse/{asset}.json?auth={firebase_secret}"
+def firebase_speichere_ordergroesse(asset, betrag, firebase_secret, firebase_url):
+    url = f"{firebase_url}/ordergroesse/{asset}.json?auth={firebase_secret}"
     data = {"usdt_amount": betrag}
     response = requests.put(url, json=data)
     return f"Ordergröße für {asset} gespeichert: {betrag}, Status: {response.status_code}"
 
-def firebase_lese_ordergroesse(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/ordergroesse/{asset}.json?auth={firebase_secret}"
+def firebase_lese_ordergroesse(asset, firebase_secret, firebase_url):
+    url = f"{firebase_url}/ordergroesse/{asset}.json?auth={firebase_secret}"
     response = requests.get(url)
     
     if response.status_code != 200:
@@ -262,27 +263,27 @@ def firebase_lese_ordergroesse(asset, firebase_secret):
     return None
 
 
-def firebase_loesche_ordergroesse(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/ordergroesse/{asset}.json?auth={firebase_secret}"
+def firebase_loesche_ordergroesse(asset, firebase_secret, firebase_url):
+    url = f"{firebase_url}/ordergroesse/{asset}.json?auth={firebase_secret}"
     response = requests.delete(url)
     return f"Ordergröße für {asset} gelöscht, Status: {response.status_code}"
 
-def firebase_speichere_kaufpreis(asset, price, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+def firebase_speichere_kaufpreis(asset, price, firebase_secret, firebase_url):
+    url = f"{firebase_url}/kaufpreise/{asset}.json?auth={firebase_secret}"
     data = {"price": price}
     response = requests.post(url, json=data)
     return f"Kaufpreis gespeichert für {asset}: {price}, Status: {response.status_code}"
 
-def firebase_loesche_kaufpreise(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+def firebase_loesche_kaufpreise(asset, firebase_secret, firebase_url):
+    url = f"{firebase_url}/kaufpreise/{asset}.json?auth={firebase_secret}"
     response = requests.delete(url)
     if response.status_code == 200:
         return f"Kaufpreise für {asset} gelöscht."
     else:
         return f"Fehler beim Löschen der Kaufpreise für {asset}: Status {response.status_code}"
 
-def firebase_lese_kaufpreise(asset, firebase_secret):
-    url = f"{FIREBASE_URL}/kaufpreise/{asset}.json?auth={firebase_secret}"
+def firebase_lese_kaufpreise(asset, firebase_secret, firebase_url):
+    url = f"{firebase_url}/kaufpreise/{asset}.json?auth={firebase_secret}"
     response = requests.get(url)
     if response.status_code != 200:
         return None
@@ -316,6 +317,12 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 def webhook():
     # Assuming you receive JSON data with a 'positionData' field
     data = request.json
+    vyn = data.get("vyn", "nein").lower()
+    if vyn == "ja":
+        firebase_url = os.environ.get("FIREBASE_URL_vyn", "")
+    else:
+        firebase_url = os.environ.get("FIREBASE_URL", "")
+        
     position_data = data.get('positionData', {})
 
     # Now use position_data safely
@@ -360,7 +367,7 @@ def webhook():
     durchschnittspreis = None
     try:
         if firebase_secret:
-            kaufpreise = firebase_lese_kaufpreise(base_asset, firebase_secret) or []
+            kaufpreise = firebase_lese_kaufpreise(base_asset, firebase_secret, firebase_url) or []
             durchschnittspreis = berechne_durchschnittspreis(kaufpreise)
             logs.append(f"Firebase Kaufpreise: {kaufpreise}")
             logs.append(f"Berechneter Durchschnittspreis: {durchschnittspreis}")
