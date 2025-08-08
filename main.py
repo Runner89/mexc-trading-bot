@@ -492,7 +492,7 @@ def webhook():
                 aktueller_status = status_fuer_alle.get(base_asset)
                 if aktueller_status != "Fehler":
                     
-                    firebase_speichere_status(base_asset, "OK", firebase_secret)
+                   
                     logs.append(f"Status für {base_asset} auf OK gesetzt.")
             except Exception as e:
                 logs.append(f"Fehler beim Setzen des Status auf OK: {e}")
