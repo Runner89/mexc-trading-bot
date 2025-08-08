@@ -498,35 +498,56 @@ def webhook():
             logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
             sende_telegram_nachricht(f"Fehler beim Speichern des Kaufpreises {base_asset}: {e}")
 
-   # 8. Durchschnittspreis bestimmen – abhängig vom Status
+  # 8. Durchschnittspreis bestimmen – abhängig vom Status
     durchschnittspreis = None
     kaufpreise = []
     
-    aktueller_status = status_fuer_alle.get(base_asset)
-    if aktueller_status == "Fehler":
-        logs.append(f"Status für {base_asset} ist 'Fehler' → direkt BingX-Fallback verwenden.")
-        # Fallback direkt hier ausführen
-        try:
-            for pos in positions_raw:
-                if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
-                    avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
-                    if avg_price > 0:
-                        durchschnittspreis = round(avg_price * (1 - 0.002), 6)
-                        logs.append(f"[Direkter Fallback] avgPrice aus Position verwendet: {durchschnittspreis}")
-                    else:
-                        logs.append("[Direkter Fallback] Kein gültiger avgPrice in Position vorhanden.")
-                    break
-        except Exception as e:
-            logs.append(f"[Direkter Fallback Fehler] avgPrice konnte nicht berechnet werden: {e}")
-    else:
-        # Firebase-Durchschnitt versuchen
-        if firebase_secret:
-            kaufpreise = firebase_lese_kaufpreise(base_asset, firebase_secret)
-            durchschnittspreis = berechne_durchschnittspreis(kaufpreise or [])
-            if durchschnittspreis:
-                logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
-            else:
-                logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
+    try:
+        aktueller_status = status_fuer_alle.get(base_asset)
+    
+        if aktueller_status == "Fehler":
+            # Direkter BingX-Fallback
+            logs.append(f"Status für {base_asset} ist 'Fehler' → direkt BingX-Fallback verwenden.")
+            try:
+                for pos in positions_raw:
+                    if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                        avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                        if avg_price > 0:
+                            durchschnittspreis = round(avg_price * (1 - 0.002), 6)
+                            logs.append(f"[Direkter Fallback] avgPrice aus Position verwendet: {durchschnittspreis}")
+                        else:
+                            logs.append("[Direkter Fallback] Kein gültiger avgPrice in Position vorhanden.")
+                        break
+            except Exception as e:
+                logs.append(f"[Direkter Fallback Fehler] avgPrice konnte nicht berechnet werden: {e}")
+    
+        else:
+            # 1. Versuch: Firebase-Durchschnitt
+            if firebase_secret:
+                kaufpreise = firebase_lese_kaufpreise(base_asset, firebase_secret)
+                durchschnittspreis = berechne_durchschnittspreis(kaufpreise or [])
+                if durchschnittspreis:
+                    logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
+                else:
+                    logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
+    
+            # 2. Fallback BingX, wenn Firebase nichts liefert
+            if not durchschnittspreis or durchschnittspreis == 0:
+                try:
+                    for pos in positions_raw:
+                        if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                            avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                            if avg_price > 0:
+                                durchschnittspreis = round(avg_price * (1 - 0.002), 6)
+                                logs.append(f"[Fallback] avgPrice aus Position verwendet: {durchschnittspreis}")
+                            else:
+                                logs.append("[Fallback] Kein gültiger avgPrice in Position vorhanden.")
+                            break
+                except Exception as e:
+                    logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+    
+    except Exception as e:
+        logs.append(f"[Fehler] Durchschnittspreis-Berechnung fehlgeschlagen: {e}")
 
     # 9. Alte Sell-Limit-Orders löschen
     try:
