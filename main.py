@@ -475,10 +475,10 @@ def webhook():
         try:
             logs.append(firebase_loesche_kaufpreise(base_asset, firebase_secret))
             status_fuer_alle.pop(symbol, None)
-            status_fuer_alle[base_asset] = "OK"
+            status_fuer_alle[symbol] = "OK"
         except Exception as e:
             logs.append(f"Fehler beim Löschen der Kaufpreise: {e}")
-            status_fuer_alle[base_asset] = "Fehler"
+            status_fuer_alle[symbol] = "Fehler"
             sende_telegram_nachricht(f"Fehler beim Löschen der Kaufpreise {base_asset}: {e}")
 
    # 7. Kaufpreis speichern + Status ggf. auf OK setzen
@@ -489,7 +489,7 @@ def webhook():
 
             # Falls Status nicht "Fehler" ist, auf OK setzen
             try:
-                aktueller_status = status_fuer_alle.get(base_asset)
+                aktueller_status = status_fuer_alle.get(symbol)
                 if aktueller_status != "Fehler":
                     
                    
@@ -499,7 +499,7 @@ def webhook():
 
         except Exception as e:
             logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
-            status_fuer_alle[base_asset] = "Fehler"
+            status_fuer_alle[symbol] = "Fehler"
             sende_telegram_nachricht(f"Fehler beim Speichern des Kaufpreises {base_asset}: {e}")
 
   # 8. Durchschnittspreis bestimmen – abhängig vom Status
@@ -507,7 +507,7 @@ def webhook():
     kaufpreise = []
     
     try:
-        aktueller_status = status_fuer_alle.get(base_asset)
+        aktueller_status = status_fuer_alle.get(symbol)
     
         if aktueller_status == "Fehler":
             # Direkter BingX-Fallback
@@ -524,7 +524,7 @@ def webhook():
                         break
             except Exception as e:
                 logs.append(f"[Direkter Fallback Fehler] avgPrice konnte nicht berechnet werden: {e}")
-                status_fuer_alle[base_asset] = "Fehler"
+                status_fuer_alle[symbol] = "Fehler"
         else:
             # 1. Versuch: Firebase-Durchschnitt
             if firebase_secret:
@@ -534,7 +534,7 @@ def webhook():
                     logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
                 else:
                     logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
-                    status_fuer_alle[base_asset] = "Fehler"
+                    status_fuer_alle[symbol] = "Fehler"
     
             # 2. Fallback BingX, wenn Firebase nichts liefert
             if not durchschnittspreis or durchschnittspreis == 0:
@@ -550,7 +550,7 @@ def webhook():
                             break
                 except Exception as e:
                     logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
-                    status_fuer_alle[base_asset] = "Fehler"
+                    status_fuer_alle[symbol] = "Fehler"
     
     except Exception as e:
         logs.append(f"[Fehler] Durchschnittspreis-Berechnung fehlgeschlagen: {e}")
