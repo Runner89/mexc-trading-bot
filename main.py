@@ -45,6 +45,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 saved_usdt_amounts = {}  # globales Dict für alle Coins
+status_fuer_alle = {} 
 
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -337,6 +338,7 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global saved_usdt_amounts
+    global status_fuer_alle
     
     data = request.json
     logs = []
@@ -638,7 +640,7 @@ def webhook():
         "stop_loss_price": stop_loss_price if liquidation_price else None,
         "stop_loss_response": stop_loss_response if liquidation_price else None,
         "saved_usdt_amount": saved_usdt_amounts,      
-        "status": status_fuer_alle.get(base_asset, "Unbekannt"),
+        "status_fuer_alle": status_fuer_alle.get(base_asset, "Unbekannt"),
         "logs": logs
     })
 
