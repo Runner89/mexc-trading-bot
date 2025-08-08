@@ -476,6 +476,7 @@ def webhook():
             status_fuer_alle[base_asset] = "OK"
         except Exception as e:
             logs.append(f"Fehler beim Löschen der Kaufpreise: {e}")
+            status_fuer_alle[base_asset] = "Fehler"
             sende_telegram_nachricht(f"Fehler beim Löschen der Kaufpreise {base_asset}: {e}")
 
    # 7. Kaufpreis speichern + Status ggf. auf OK setzen
@@ -488,7 +489,7 @@ def webhook():
             try:
                 aktueller_status = status_fuer_alle.get(base_asset)
                 if aktueller_status != "Fehler":
-                    status_fuer_alle[base_asset] = "OK"
+                    
                     firebase_speichere_status(base_asset, "OK", firebase_secret)
                     logs.append(f"Status für {base_asset} auf OK gesetzt.")
             except Exception as e:
@@ -496,6 +497,7 @@ def webhook():
 
         except Exception as e:
             logs.append(f"Fehler beim Speichern des Kaufpreises: {e}")
+            status_fuer_alle[base_asset] = "Fehler"
             sende_telegram_nachricht(f"Fehler beim Speichern des Kaufpreises {base_asset}: {e}")
 
   # 8. Durchschnittspreis bestimmen – abhängig vom Status
@@ -520,7 +522,7 @@ def webhook():
                         break
             except Exception as e:
                 logs.append(f"[Direkter Fallback Fehler] avgPrice konnte nicht berechnet werden: {e}")
-    
+                status_fuer_alle[base_asset] = "Fehler"
         else:
             # 1. Versuch: Firebase-Durchschnitt
             if firebase_secret:
@@ -530,6 +532,7 @@ def webhook():
                     logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
                 else:
                     logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
+                    status_fuer_alle[base_asset] = "Fehler"
     
             # 2. Fallback BingX, wenn Firebase nichts liefert
             if not durchschnittspreis or durchschnittspreis == 0:
@@ -545,6 +548,7 @@ def webhook():
                             break
                 except Exception as e:
                     logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+                    status_fuer_alle[base_asset] = "Fehler"
     
     except Exception as e:
         logs.append(f"[Fehler] Durchschnittspreis-Berechnung fehlgeschlagen: {e}")
