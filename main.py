@@ -625,23 +625,9 @@ def webhook():
 
     
 
-    return jsonify({
-        "error": False,
-        "order_result": order_response,
-        "limit_order_result": limit_order_response,
-        "symbol": symbol,
-        "usdt_amount": usdt_amount,
-        "sell_quantity": sell_quantity,
-        "price_from_webhook": price_from_webhook,
-        "sell_percentage": sell_percentage,
-        "firebase_average_price": durchschnittspreis,
-        "firebase_all_prices": kaufpreise,
-        "usdt_balance_before_order": available_usdt,
-        "stop_loss_price": stop_loss_price if liquidation_price else None,
-        "stop_loss_response": stop_loss_response if liquidation_price else None,
-        "saved_usdt_amount": saved_usdt_amounts,      
-        "status_fuer_alle": status_fuer_alle,
-        "logs": logs
+    return jsonify({ 
+        "status_fuer_alle": status_fuer_alle
+     
     })
 
 if __name__ == "__main__":
