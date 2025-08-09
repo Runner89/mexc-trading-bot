@@ -395,7 +395,7 @@ def webhook():
         logs.append(f"Open Orders: {open_orders}")
     except Exception as e:
         logs.append(f"Fehler bei Orderprüfung: {e}")
-        sende_telegram_nachricht(f"Fehler bei Orderprüfung {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler bei Orderprüfung {botname}: {e}")
 
     # 3. Ordergröße ermitteln (Compounding-Logik)
     usdt_amount = 0
@@ -434,14 +434,14 @@ def webhook():
                     if usdt_amount > 0:
                         saved_usdt_amounts[botname] = usdt_amount
                         logs.append(f"Ordergröße aus Firebase für {botname} gelesen: {usdt_amount}")
-                        sende_telegram_nachricht(f"ℹ️  Ordergröße aus Firebase verwendet bei Bot: {botname}")
+                        sende_telegram_nachricht(botname, f"ℹ️  Ordergröße aus Firebase verwendet bei Bot: {botname}")
                     else:
                         logs.append(f"❌ Keine Ordergröße gefunden für {botname}")
-                        sende_telegram_nachricht(f"❌ Keine Ordergröße gefunden für Bot: {botname}")
+                        sende_telegram_nachricht(botname, f"❌ Keine Ordergröße gefunden für Bot: {botname}")
                 except Exception as e:
                     status_fuer_alle[botname] = "Fehler"
                     logs.append(f"Fehler beim Lesen der Ordergröße aus Firebase: {e}")
-                    sende_telegram_nachricht(f"❌ Fehler beim Lesen der Ordergröße aus Firebase {botname}: {e}")
+                    sende_telegram_nachricht(botname, f"❌ Fehler beim Lesen der Ordergröße aus Firebase {botname}: {e}")
             else:
                 usdt_amount = saved_usdt_amount
                 logs.append(f"Verwende gespeicherte Ordergröße aus Dict für {botname}: {usdt_amount}")
@@ -449,7 +449,7 @@ def webhook():
         except Exception as e:
             status_fuer_alle[botname] = "Fehler"
             logs.append(f"Fehler bei Ordergrößenberechnung: {e}")
-            sende_telegram_nachricht(f"❌ Ausnahmefehler bei Ordergrößenberechnung für {botname}: {e}")
+            sende_telegram_nachricht(botname, f"❌ Ausnahmefehler bei Ordergrößenberechnung für {botname}: {e}")
 
     # 4. Market-Order ausführen
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
@@ -473,12 +473,12 @@ def webhook():
         else:
             stop_loss_price = None
             logs.append("Liquidationspreis nicht verfügbar. Kein Stop-Loss-Berechnung möglich.")
-            sende_telegram_nachricht(f"ℹ️ Liquidationspreis nicht verfügbar für Bot: {botname}")
+            sende_telegram_nachricht(botname, f"ℹ️ Liquidationspreis nicht verfügbar für Bot: {botname}")
     except Exception as e:
         sell_quantity = 0
         stop_loss_price = None
         logs.append(f"Fehler bei Positions- oder Liquidationspreis-Abfrage: {e}")
-        sende_telegram_nachricht(f"Fehler bei Positions- oder Liquidationspreis-Abfrage {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler bei Positions- oder Liquidationspreis-Abfrage {botname}: {e}")
 
     # 6. Kaufpreise ggf. löschen
     if firebase_secret and not open_sell_orders_exist:
@@ -509,7 +509,7 @@ def webhook():
                     if avg_price > 0:
                         durchschnittspreis = round(avg_price * (1 - 0.002), 6)
                         logs.append(f"[Fallback] avgPrice von BingX verwendet: {durchschnittspreis}")
-                        sende_telegram_nachricht(f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
+                        sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                     break
         except Exception as e:
             logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
@@ -535,14 +535,14 @@ def webhook():
                         if avg_price > 0:
                             durchschnittspreis = round(avg_price * (1 - 0.002), 6)
                             logs.append(f"Fallback avgPrice verwendet für Bot: {botname}")
-                            sende_telegram_nachricht(f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
+                            sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                             status_fuer_alle[botname] = "Fehler"
                         else:
                             logs.append("[Fallback] Kein gültiger avgPrice vorhanden.")
                         break
             except Exception as e:
                 logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
-                sende_telegram_nachricht(f"❌ Fallback von BINGX fehlgeschlagen für Bot: {botname}")
+                sende_telegram_nachricht(botname, f"❌ Fallback von BINGX fehlgeschlagen für Bot: {botname}")
 
     # 9. Alte Sell-Limit-Orders löschen
     try:
@@ -553,7 +553,7 @@ def webhook():
                     logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_response}")
     except Exception as e:
         logs.append(f"Fehler beim Löschen der Sell-Limit-Orders: {e}")
-        sende_telegram_nachricht(f"Fehler beim Löschen der Sell-Limit-Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler beim Löschen der Sell-Limit-Order {botname}: {e}")
 
     # 10. Neue Limit-Order setzen
     limit_order_response = None
@@ -570,7 +570,7 @@ def webhook():
             logs.append("Ungültige Daten, keine Limit-Order gesetzt.")
     except Exception as e:
         logs.append(f"Fehler bei Limit-Order: {e}")
-        sende_telegram_nachricht(f"Fehler bei Limit-Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler bei Limit-Order {botname}: {e}")
 
     # 11. Bestehende STOP_MARKET SL-Orders löschen
     try:
@@ -580,7 +580,7 @@ def webhook():
                 logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
     except Exception as e:
         logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
-        sende_telegram_nachricht(f"Fehler beim Löschen alter Stop-Market Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler beim Löschen alter Stop-Market Order {botname}: {e}")
 
     # 12. Stop-Loss Order setzen
     stop_loss_response = None
@@ -592,7 +592,7 @@ def webhook():
             logs.append("Keine Stop-Loss Order gesetzt – unvollständige Daten.")
     except Exception as e:
         logs.append(f"Fehler beim Setzen der Stop-Loss Order: {e}")
-        sende_telegram_nachricht(f"Fehler beim Setzen der Stop-Loss Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"Fehler beim Setzen der Stop-Loss Order {botname}: {e}")
 
     # 13. Alarm senden
     alarm_trigger = int(data.get("alarm", 0))
@@ -610,7 +610,7 @@ def webhook():
                 logs.append(f"Neuer Alarmwert in Firebase gespeichert: {anzahl_käufe}")
         except Exception as e:
             logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
-            sende_telegram_nachricht(f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
+            sende_telegram_nachricht(botname, f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
 
     return jsonify({
         "error": False,
