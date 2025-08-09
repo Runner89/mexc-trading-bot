@@ -602,7 +602,7 @@ def webhook():
     if anzahl_nachkäufe >= alarm_trigger:
         try:
             nachricht = f"{botname}:\nNachkäufe: {anzahl_nachkäufe}"
-            telegram_result = sende_telegram_nachricht(nachricht)
+            telegram_result = sende_telegram_nachricht(botname, nachricht)
             logs.append(f"Telegram gesendet: {telegram_result}")
 
             if firebase_secret:
