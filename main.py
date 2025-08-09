@@ -48,6 +48,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 saved_usdt_amounts = {}  # globales Dict für alle Coins
 status_fuer_alle = {} 
+alarm_counter = {}
 
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -337,6 +338,7 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 def webhook():
     global saved_usdt_amounts
     global status_fuer_alle
+    global alarm_counter
 
     data = request.json
     logs = []
@@ -413,6 +415,7 @@ def webhook():
                 if botname in status_fuer_alle:
                     del status_fuer_alle[botname]
                 status_fuer_alle[botname] = "OK"
+                alarm_counter[botname] = -1
 
                 logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
 
@@ -454,6 +457,7 @@ def webhook():
     # 4. Market-Order ausführen
     logs.append(f"Plaziere Market-Order mit {usdt_amount} USDT für {symbol} ({position_side})...")
     order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), position_side)
+    alarm_counter[botname] += 1
     time.sleep(2)
     logs.append(f"Market-Order Antwort: {order_response}")
 
@@ -594,17 +598,19 @@ def webhook():
         logs.append(f"Fehler beim Setzen der Stop-Loss Order: {e}")
         sende_telegram_nachricht(botname, f"Fehler beim Setzen der Stop-Loss Order {botname}: {e}")
 
-    # 13. Alarm senden
     alarm_trigger = int(data.get("alarm", 0))
-    anzahl_käufe = len(kaufpreise or [])
-    anzahl_nachkäufe = max(anzahl_käufe - 1, 0)
 
+    if status_fuer_alle.get(botname) == "Fehler":
+        anzahl_nachkäufe = alarm_counter[botname] 
+    else:
+        anzahl_käufe = len(kaufpreise or [])
+        anzahl_nachkäufe = max(anzahl_käufe - 1, 0)
+    
     if anzahl_nachkäufe >= alarm_trigger:
         try:
             nachricht = f"{botname}:\nNachkäufe: {anzahl_nachkäufe}"
             telegram_result = sende_telegram_nachricht(botname, nachricht)
             logs.append(f"Telegram gesendet: {telegram_result}")
-             
         except Exception as e:
             logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
             sende_telegram_nachricht(botname, f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
