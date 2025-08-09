@@ -364,6 +364,7 @@ def webhook():
     position_side = data.get("position_side") or data.get("positionSide") or "LONG"
     firebase_secret = data.get("FIREBASE_SECRET")
     price_from_webhook = data.get("price")
+    leverage2 = data.get("leverage")
 
     if not api_key or not secret_key:
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
@@ -426,9 +427,9 @@ def webhook():
                     logs.append(f"Ordergröße aus Cache für {botname} gelöscht (keine offene Sell-Limit-Order)")
 
                 if available_usdt is not None and pyramiding > 0:
-                    usdt_amount = max((available_usdt - sicherheit) / pyramiding, 0)
+                    usdt_amount = max(((available_usdt - sicherheit) / pyramiding) * leverage2, 0)
                     saved_usdt_amounts[botname] = usdt_amount
-                    logs.append(f"Neue Ordergröße berechnet: {usdt_amount}")
+                    logs.append(f"Neue Ordergröße berechnet: {usdt_amount})
                     logs.append(firebase_speichere_ordergroesse(botname, usdt_amount, firebase_secret))
 
             saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
@@ -439,7 +440,7 @@ def webhook():
                     if usdt_amount > 0:
                         saved_usdt_amounts[botname] = usdt_amount
                         logs.append(f"Ordergröße aus Firebase für {botname} gelesen: {usdt_amount}")
-                        sende_telegram_nachricht(botname, f"ℹ️  Ordergröße aus Firebase verwendet bei Bot: {botname}")
+                        sende_telegram_nachricht(botname, f"ℹ️ Ordergröße aus Firebase verwendet bei Bot: {botname}")
                     else:
                         logs.append(f"❌ Keine Ordergröße gefunden für {botname}")
                         sende_telegram_nachricht(botname, f"❌ Keine Ordergröße gefunden für Bot: {botname}")
