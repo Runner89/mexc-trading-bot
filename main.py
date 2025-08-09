@@ -432,7 +432,7 @@ def webhook():
                     usdt_amount = max(((available_usdt - sicherheit) / pyramiding), 0) 
                     saved_usdt_amounts[botname] = usdt_amount
                     logs.append(f"Neue Ordergröße berechnet: {usdt_amount}")
-                    logs.append(firebase_speichere_ordergroesse(botname, usdt_amount *  leverageB, firebase_secret))
+                    logs.append(firebase_speichere_ordergroesse(botname, usdt_amount, firebase_secret))
 
             saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
 
