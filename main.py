@@ -376,8 +376,8 @@ def webhook():
         balance_response = get_futures_balance(api_key, secret_key)
         logs.append(f"Balance Response: {balance_response}")
         if balance_response.get("code") == 0:
-            balance_data = balance_response.get("data", {}).get("balance", {})
-            available_usdt = float(balance_data.get("availableMargin", 0))
+            balance_data = balance_response.get("data", {}).get("balance", {}) * leverage2
+            available_usdt = float(balance_data.get("availableMargin", 0)) * leverage2
             logs.append(f"Freies USDT Guthaben: {available_usdt}")
         else:
             logs.append("Fehler beim Abrufen der Balance.")
@@ -427,9 +427,9 @@ def webhook():
                     logs.append(f"Ordergröße aus Cache für {botname} gelöscht (keine offene Sell-Limit-Order)")
 
                 if available_usdt is not None and pyramiding > 0:
-                    usdt_amount = max(((available_usdt - sicherheit) / pyramiding), 0)
-                    saved_usdt_amounts[botname] = usdt_amount * leverage2
-                    logs.append(f"Neue Ordergröße berechnet: {usdt_amount * leverage2})
+                    usdt_amount = max(((available_usdt - sicherheit) / pyramiding), 0) 
+                    saved_usdt_amounts[botname] = usdt_amount
+                    logs.append(f"Neue Ordergröße berechnet: {usdt_amount})
                     logs.append(firebase_speichere_ordergroesse(botname, usdt_amount * leverage2, firebase_secret))
 
             saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
