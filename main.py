@@ -378,12 +378,8 @@ def webhook():
         logs.append(f"Balance Response: {balance_response}")
         if balance_response.get("code") == 0:
             
-            balance_data_temp = 0
-            #balance_data = balance_response.get("data", {}).get("balance", {})
             balance_data_temp = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
-            balance_data = balance_data_temp *  leverageB
-
-            available_usdt = float(balance_data.get("availableMargin", 0)) * leverageB
+            available_usdt = balance_data_temp * leverageB
             logs.append(f"Freies USDT Guthaben: {available_usdt}")
         else:
             logs.append("Fehler beim Abrufen der Balance.")
