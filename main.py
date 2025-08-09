@@ -571,7 +571,7 @@ def webhook():
  
     try:
         if durchschnittspreis and sell_percentage:
-            limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 2)
+            limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 6)
         else:
             limit_price = 0
 
