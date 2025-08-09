@@ -364,7 +364,7 @@ def webhook():
     position_side = data.get("position_side") or data.get("positionSide") or "LONG"
     firebase_secret = data.get("FIREBASE_SECRET")
     price_from_webhook = data.get("price")
-    leverage2 = float(data.get("leverage", 1))
+     leverageB = float(data.get("leverage", 1))
 
     if not api_key or not secret_key:
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
@@ -380,7 +380,7 @@ def webhook():
             balance_data_temp = 0
             #balance_data = balance_response.get("data", {}).get("balance", {})
             balance_data_temp = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
-            balance_data = available_margin * leverage2
+            balance_data = available_margin *  leverageB
 
             available_usdt = float(balance_data.get("availableMargin", 0)) * leverage 2
             logs.append(f"Freies USDT Guthaben: {available_usdt}")
@@ -435,7 +435,7 @@ def webhook():
                     usdt_amount = max(((available_usdt - sicherheit) / pyramiding), 0) 
                     saved_usdt_amounts[botname] = usdt_amount
                     logs.append(f"Neue Ordergröße berechnet: {usdt_amount}")
-                    logs.append(firebase_speichere_ordergroesse(botname, usdt_amount * leverage2, firebase_secret))
+                    logs.append(firebase_speichere_ordergroesse(botname, usdt_amount *  leverageB, firebase_secret))
 
             saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
 
