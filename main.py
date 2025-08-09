@@ -9,6 +9,7 @@
 #Ordergrösse wird in Variable gespeichert, Firebase wird nur als Backup verwendet
 #StopLoss 2% über Liquidationspreis
 #Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.02% für die Berechnung der Sell-Limit-Order verwendet.
+#Falls Status Fehler werden nicht die Anzahl Kaufpreise gezählt sondern von der Variablen alarm_counter
 
 ###### Funktioniert nur, wenn alle Order die gleiche Grösse haben (Durchschnittspreis stimmt sonst nicht in Firebase) #####
 
@@ -17,6 +18,7 @@
 #    "api_key": "",
 #    "secret_key": "",
 #    "symbol": "BABY-USDT",
+#    "botname": "Baby_Bot", # muss einmalig sein
 #    "position_side": "LONG",
 #    "sell_percentage": 2.5,
 #    "price": 0.068186,
