@@ -571,7 +571,7 @@ def webhook():
  
     try:
         if durchschnittspreis and sell_percentage:
-            limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 6)
+            limit_price = round(durchschnittspreis * (1 + float(sell_percentage) / 100), 2)
         else:
             limit_price = 0
 
@@ -582,9 +582,10 @@ def webhook():
             logs.append(f"Limit-Order gesetzt für Bot {botname} (Basis Durchschnittspreis {durchschnittspreis}): {limit_order_response}")
         else:
             logs.append("Ungültige Daten, keine Limit-Order gesetzt.")
+            sende_telegram_nachricht(botname, f"❌ Ungültige Daten, keine Limit-Order gesetzt für Bot: {botname}")
     except Exception as e:
         logs.append(f"Fehler bei Limit-Order: {e}")
-        sende_telegram_nachricht(botname, f"Fehler bei Limit-Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler bei Limit-Order für Bot: {botname}")
 
     # 11. Bestehende STOP_MARKET SL-Orders löschen
     try:
@@ -594,7 +595,7 @@ def webhook():
                 logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
     except Exception as e:
         logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
-        sende_telegram_nachricht(botname, f"Fehler beim Löschen alter Stop-Market Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen des Stop Loss für Bot: {botname}")
 
     # 12. Stop-Loss Order setzen
     stop_loss_response = None
@@ -606,7 +607,7 @@ def webhook():
             logs.append("Keine Stop-Loss Order gesetzt – unvollständige Daten.")
     except Exception as e:
         logs.append(f"Fehler beim Setzen der Stop-Loss Order: {e}")
-        sende_telegram_nachricht(botname, f"Fehler beim Setzen der Stop-Loss Order {botname}: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen des Stop Loss für Bot: {botname}")
 
     alarm_trigger = int(data.get("alarm", 0))
 
