@@ -604,10 +604,7 @@ def webhook():
             nachricht = f"{botname}:\nNachkäufe: {anzahl_nachkäufe}"
             telegram_result = sende_telegram_nachricht(botname, nachricht)
             logs.append(f"Telegram gesendet: {telegram_result}")
-
-            if firebase_secret:
-                firebase_speichere_alarmwert(botname, anzahl_käufe, firebase_secret)
-                logs.append(f"Neuer Alarmwert in Firebase gespeichert: {anzahl_käufe}")
+             
         except Exception as e:
             logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
             sende_telegram_nachricht(botname, f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
