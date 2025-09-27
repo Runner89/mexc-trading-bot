@@ -128,11 +128,11 @@ def place_limit_order(api_key, secret_key, symbol, quantity, price, side, positi
         "price": round(price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": reduce_only,
+        "reduceOnly": "true" if reduce_only else "false",  # Wichtig!
         "timestamp": int(time.time() * 1000)
     }
 
-    # Signatur erzeugen
+    # Sortiere die Keys alphabetisch für Signatur
     query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
     params["signature"] = generate_signature(secret_key, query_string)
 
