@@ -176,7 +176,7 @@ def webhook():
         logs.append(f"Leverage auf {leverage} gesetzt")
 
         # Positionsgröße = verfügbares Guthaben * Hebel
-        order_size = available_usdt * leverage
+        order_size = available_usdt * leverage * 2
         logs.append(f"Ordergröße = Available USDT x Hebel: {order_size}")
 
         # Market Order platzieren
