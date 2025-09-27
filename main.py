@@ -177,19 +177,16 @@ def webhook():
         logs.append(f"Leverage auf {leverage} gesetzt")
         time.sleep(1)
         
-        # 3. Sicherheits-Puffer einbauen (z.B. 2% weniger als maximal erlaubte Margin)
-        usable_margin = available_margin * 0.98
-        logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
-        
-        # 4. Coin-Menge berechnen
+        # 3. Coin-Menge berechnen
         price = get_current_price(symbol)
         if not price:
             return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
         
-        quantity = round((usable_margin * leverage) / price, 6)
+        # Hier kein extra x leverage!
+        quantity = round(available_margin / price, 6)
         logs.append(f"Market Order Menge (Coin) = {quantity}")
         
-        # 5. Market Order platzieren
+        # 4. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, quantity, position_side)
         logs.append(f"Market Order Response: {order_resp}")
         if order_resp.get("code") != 0:
