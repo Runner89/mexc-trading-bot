@@ -69,30 +69,6 @@ def place_market_order(api_key, secret_key, symbol, margin_amount, position_side
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
-    side = "SELL" if position_side.upper() == "LONG" else "BUY"
-    timestamp = int(time.time() * 1000)
-    params_dict = {
-        "symbol": symbol,
-        "side": side,
-        "type": "LIMIT",
-        "quantity": round(quantity, 6),
-        "price": round(limit_price, 6),
-        "timeInForce": "GTC",
-        "positionSide": position_side.upper(),
-        "timestamp": timestamp
-    }
-
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
-
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
-
-
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
         params = {}
@@ -118,27 +94,28 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
     return response.json()
 
-def get_current_position(api_key, secret_key, symbol, position_side):
+def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = "/openApi/swap/v2/user/positions"
     params = {"symbol": symbol}
     response = send_signed_request("GET", endpoint, api_key, secret_key, params)
 
+    positions = response.get("data", [])
+    raw_positions = positions if isinstance(positions, list) else []
+
     position_size = 0
-    entry_price = 0
+    liquidation_price = None
 
     if response.get("code") == 0:
-        for pos in response.get("data", []):
+        for pos in positions:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
                 try:
                     position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
-                    entry_price = float(pos.get("avgPrice", 0))
+                    liquidation_price = float(pos.get("liquidationPrice", 0))
                 except (ValueError, TypeError):
                     position_size = 0
-                    entry_price = 0
                 break
 
-    return position_size, entry_price
-
+    return position_size, raw_positions, liquidation_price
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
@@ -220,25 +197,7 @@ def webhook():
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
         time.sleep(1)
-        # 7. Einstiegspreis & Positionsgröße
-        pos_size, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
-        logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
-       
-
-        # 8. SL & TP berechnen
-        if position_side == "LONG":
-            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
-            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-        else:
-            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
-            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-        logs.append(f"Stop Loss: {sl_price}, Take Profit: {tp_price}")
-
-        # 9. SL & TP Orders platzieren
-        sl_order = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
-        tp_order = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
-        logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
             "error": False,
