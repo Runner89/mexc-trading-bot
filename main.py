@@ -88,7 +88,7 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="
 
     params_dict = {
         "symbol": symbol,
-        "side": "BUY",
+        "side": "SELL",
         "type": "MARKET",
         "quantity": quantity,
         "positionSide": position_side,
