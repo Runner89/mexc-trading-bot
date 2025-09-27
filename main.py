@@ -104,18 +104,16 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     position_size = 0
     liquidation_price = None
+    entry_price = 0
 
     if response.get("code") == 0:
         for pos in positions:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
-                try:
-                    position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
-                    liquidation_price = float(pos.get("liquidationPrice", 0))
-                except (ValueError, TypeError):
-                    position_size = 0
+                position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
+                entry_price = float(pos.get("entryPrice", 0))  # <— Hier richtiges Feld
                 break
-
-    return position_size, raw_positions, liquidation_price
+        
+        return position_size, raw_positions, entry_price
 
 
 def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side):
