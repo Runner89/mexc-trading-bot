@@ -155,11 +155,6 @@ def webhook():
     data = request.json
     logs = []
 
-    # --- Prüfen, ob action vorhanden ist (vyn.action oder action) ---
-    action = data.get("vyn", {}).get("action") or data.get("action")
-    if action:
-        return jsonify({"status": "ignored", "reason": "action vorhanden"}), 200
-
     symbol = data.get("RENDER", {}).get("symbol", "BTC-USDT")
     api_key = data.get("RENDER", {}).get("api_key")
     secret_key = data.get("RENDER", {}).get("secret_key")
@@ -168,10 +163,10 @@ def webhook():
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  # Take Profit %
 
     if not api_key or not secret_key:
-        return jsonify({"error": True, "msg": "api_key und secret_key erforderlich"}), 400
+        return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
 
     try:
-        # 1. Guthaben (Margin) abfragen
+        # 1. Guthaben abfragen
         balance_response = get_futures_balance(api_key, secret_key)
         available_usdt = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
         logs.append(f"Available USDT (Margin): {available_usdt}")
@@ -180,38 +175,46 @@ def webhook():
         set_leverage(api_key, secret_key, symbol, leverage, "SHORT")
         logs.append(f"Leverage auf {leverage} gesetzt")
 
-        # 3. Market Order mit kompletter verfügbaren Margin (Hebel ist schon berücksichtigt)
-        order_size = available_usdt  # NICHT mehr mit leverage multiplizieren
-        logs.append(f"Ordergröße = Available USDT: {order_size}")
+        # 3. Market Order mit kompletter verfügbaren Margin (bereits Hebel berücksichtigt)
+        order_size = available_usdt
+        logs.append(f"Ordergröße = Available USDT (Margin bereits Hebel berücksichtigt): {order_size}")
 
         order_response = place_market_order(api_key, secret_key, symbol, order_size, "SHORT")
+        logs.append(f"Market SHORT Order: {order_response}")
 
         if order_response.get("code") != 0:
             logs.append(f"Fehler beim Order platzieren: {order_response.get('msg')}")
-            return jsonify({"error": True, "msg": order_response.get('msg'), "logs": logs}), 500
+            return jsonify({
+                "error": True,
+                "msg": f"Market Order konnte nicht gesetzt werden: {order_response.get('msg')}",
+                "logs": logs
+            }), 500
 
         time.sleep(2)
 
-        # 4. Einstiegspreis ermitteln
+        # Einstiegspreis bestimmen
         entry_price = None
-        pos_size, positions_raw, _ = get_current_position(api_key, secret_key, symbol, "SHORT")
+        pos_size, positions_raw, _ = get_current_position(api_key, secret_key, symbol, "SHORT", logs)
         for pos in positions_raw:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
                 entry_price = float(pos.get("avgPrice", 0))
                 break
 
         if not entry_price:
-            return jsonify({"error": True, "msg": "Kein Einstiegspreis ermittelt", "logs": logs}), 500
+            return jsonify({"error": True, "msg": "Kein Einstiegspreis ermittelt"}), 500
 
         logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
-        # 5. SL & TP setzen
+        # 4. SL & TP Preise berechnen
         sl_price = round(entry_price * (1 + sl_percent / 100), 6)
         tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+
         logs.append(f"Stop Loss: {sl_price}, Take Profit: {tp_price}")
 
+        # 5. Limit Orders setzen
         sl_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price, "SHORT")
         tp_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, "SHORT")
+
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
