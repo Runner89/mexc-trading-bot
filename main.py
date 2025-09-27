@@ -186,11 +186,21 @@ def webhook():
         quantity = round((usable_margin * leverage) / price, 6)
         logs.append(f"Market Order Menge (Coin) = {quantity}")
 
-        # 6. Market Order platzieren
+         # 6. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
+        
         if order_resp.get("code") != 0:
-            return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
+            return jsonify({
+                "error": True,
+                "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}",
+                "logs": logs
+            }), 500
+
+        # Entry Price direkt aus der Order Response nehmen
+        entry_price = float(order_resp["data"]["order"]["avgPrice"])
+        pos_size = float(order_resp["data"]["order"]["executedQty"])
+        logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
         time.sleep(1)
         # 5. Entry Price & Positionsgröße abfragen
