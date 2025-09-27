@@ -118,9 +118,8 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     return position_size, raw_positions, liquidation_price
 
 def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
-    """
-    Platziert eine Limit-Order (TP/SL) zum Schließen einer bestehenden Position.
-    """
+    
+   
     timestamp = int(time.time() * 1000)
 
     # Side = entgegengesetzt zur Position
@@ -129,15 +128,15 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
     else:  
         side = "BUY"   # Short wird durch Buy geschlossen
 
-     params_dict = {
+    params_dict = {
         "symbol": symbol,
         "side": side,
         "type": "LIMIT",
-        "quantity": str(round(quantity, 6)),   # alles als String
-        "price": str(round(limit_price, 6)),   # alles als String
+        "quantity": str(round(quantity, 6)),   # als String
+        "price": str(round(limit_price, 6)),   # als String
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": "true",                  # ganz wichtig: als String
+        "reduceOnly": "true",                  # als String!
         "timestamp": str(timestamp)
     }
 
