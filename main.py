@@ -135,11 +135,13 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
                 try:
                     position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
                     liquidation_price = float(pos.get("liquidationPrice", 0))
+                    entry_price = float(pos.get("avgPrice", 0))  # <-- Hier hinzufügen
                 except (ValueError, TypeError):
                     position_size = 0
+                    entry_price = 0
                 break
 
-    return position_size, raw_positions, liquidation_price
+    return position_size, entry_price, raw_positions, liquidation_price
 
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
@@ -222,8 +224,10 @@ def webhook():
 
         time.sleep(1)
         # 7. Einstiegspreis & Positionsgröße
-        pos_size, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
+        pos_size, entry_price, _, _ = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
+
+       
 
         # 8. SL & TP berechnen
         if position_side == "LONG":
