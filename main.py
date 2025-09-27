@@ -117,16 +117,14 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
-   
-   
-   
+def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
+    """
+    TP/SL Order für bestehende Position
+    """
     timestamp = int(time.time() * 1000)
 
-    if position_side.upper() == "LONG":
-        side = "SELL"  # TP/SL schließen Long
-    else:  # SHORT
-        side = "BUY"   # TP/SL schließen Short
+    # Side je nach Position
+    side = "SELL" if position_side.upper() == "LONG" else "BUY"
 
     params_dict = {
         "symbol": symbol,
@@ -136,16 +134,18 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": True,  # <-- wichtig
+        "reduceOnly": True,
         "timestamp": timestamp
     }
 
+    # Wichtig: Für POST-Signatur die Parameter **als query string sortiert** zusammenstellen
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
