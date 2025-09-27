@@ -118,8 +118,13 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
 
 
-def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side, reduce_only=False):
+def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side="LONG", reduce_only=False):
+    
+    # Platziert eine Limit Order (BUY oder SELL) auf BingX.
+
     endpoint = "/openApi/swap/v2/trade/order"
+    timestamp = int(time.time() * 1000)
+
     params = {
         "symbol": symbol,
         "side": side.upper(),
@@ -128,18 +133,23 @@ def place_limit_order(api_key, secret_key, symbol, quantity, price, side, positi
         "price": round(price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": "true" if reduce_only else "false",  # Wichtig!
-        "timestamp": int(time.time() * 1000)
+        "reduceOnly": "true" if reduce_only else "false",
+        "timestamp": timestamp
     }
 
-    # Sortiere die Keys alphabetisch für Signatur
+    # Signatur aus alphabetisch sortierten Parametern
     query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
     params["signature"] = generate_signature(secret_key, query_string)
 
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(f"{BASE_URL}{endpoint}", headers=headers, json=params)
-    return response.json()
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
 
+    url = f"{BASE_URL}{endpoint}"
+    response = requests.post(url, headers=headers, json=params)
+    return response.json()
+    
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
     side_map = {"LONG": "BUY", "SHORT": "SELL"}
