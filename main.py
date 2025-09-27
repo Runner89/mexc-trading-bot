@@ -167,51 +167,50 @@ def webhook():
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
 
     try:
-        # 1. Verfügbare Margin abfragen
+        # 1. verfügbare Margin abfragen
         balance_resp = get_futures_balance(api_key, secret_key)
         available_margin = float(balance_resp.get("data", {}).get("balance", {}).get("availableMargin", 0))
         logs.append(f"Available Margin: {available_margin}")
-        
+
         # 2. Hebel setzen
         set_leverage(api_key, secret_key, symbol, leverage, position_side)
         logs.append(f"Leverage auf {leverage} gesetzt")
         time.sleep(1)
-        
-        # 3. Coin-Menge berechnen
+
+        # 3. Sicherheits-Puffer abziehen
+        usable_margin = available_margin * 0.98
+        logs.append(f"Usable Margin nach Sicherheits-Puffer ({(1-SAFETY_FACTOR)*100:.0f}%): {usable_margin}")
+
+        # 4. Preis abfragen
         price = get_current_price(symbol)
         if not price:
             return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
-        
-        # Hier kein extra x leverage!
-        quantity = round(available_margin / price, 6)
+
+        # 5. Coin-Menge berechnen
+        quantity = round((usable_margin * leverage) / price, 6)
         logs.append(f"Market Order Menge (Coin) = {quantity}")
-        
-        # 4. Market Order platzieren
-        order_resp = place_market_order(api_key, secret_key, symbol, quantity, position_side)
+
+        # 6. Market Order platzieren
+        order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
         if order_resp.get("code") != 0:
-            return jsonify({
-                "error": True,
-                "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}",
-                "logs": logs
-            }), 500
+            return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
         time.sleep(1)
-        # 5. Einstiegspreis & Positionsgröße abfragen
+        # 7. Einstiegspreis & Positionsgröße
         pos_size, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
-        # 6. SL & TP berechnen
+        # 8. SL & TP berechnen
         if position_side == "LONG":
             sl_price = round(entry_price * (1 - sl_percent / 100), 6)
             tp_price = round(entry_price * (1 + tp_percent / 100), 6)
         else:
             sl_price = round(entry_price * (1 + sl_percent / 100), 6)
             tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-
         logs.append(f"Stop Loss: {sl_price}, Take Profit: {tp_price}")
 
-        # 7. SL & TP Orders
+        # 9. SL & TP Orders platzieren
         sl_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         tp_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
@@ -229,7 +228,6 @@ def webhook():
 
     except Exception as e:
         return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
