@@ -38,23 +38,24 @@ def get_current_price(symbol: str):
     else:
         return None
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
+def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
 
-    # Side = entgegengesetzt zur Position
+    # Gegenseite der Position für Schließungs-Orders
     if position_side.upper() == "LONG":
-        side = "SELL"  # Long wird durch Sell geschlossen
-    else:  
-        side = "BUY"   # Short wird durch Buy geschlossen
+        side = "SELL"
+    else:
+        side = "BUY"
 
     params_dict = {
         "symbol": symbol,
         "side": side,
         "type": "LIMIT",
-        "quantity": str(round(quantity, 6)),   # als String
-        "price": str(round(limit_price, 6)),   # als String
+        "quantity": str(round(quantity, 6)),   # String nötig für Signatur
+        "price": str(round(limit_price, 6)),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
+        "reduceOnly": True,
         "timestamp": str(timestamp)
     }
 
@@ -71,7 +72,7 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
-
+    
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
         params = {}
@@ -232,14 +233,11 @@ def webhook():
         logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
         
         # 8. Limit Orders für TP und SL setzen
-        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side, "TP")
+        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Order Response: {tp_order_resp}")
         
-        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side, "SL")
+        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Order Response: {sl_order_resp}")
-
-
-
 
         return jsonify({
             "error": False,
