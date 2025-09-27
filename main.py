@@ -130,8 +130,12 @@ def place_limit_order(api_key, secret_key, symbol, quantity, price, side, positi
         "reduceOnly": reduce_only,
         "timestamp": timestamp
     }
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    params_dict["signature"] = generate_signature(secret_key, query_string)
+
+    # Signatur: JSON-string ohne Leerzeichen
+    json_body_str = json.dumps(params_dict, separators=(',', ':'))
+    signature = hmac.new(secret_key.encode('utf-8'), json_body_str.encode('utf-8'), hashlib.sha256).hexdigest()
+    params_dict["signature"] = signature
+
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=params_dict)
