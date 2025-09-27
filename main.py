@@ -378,6 +378,18 @@ def webhook():
         logs.append(f"Market SHORT Order: {order_response}")
 
         time.sleep(2)
+        
+        # Prüfen, ob die Order erfolgreich war
+        if order_response.get("code") != 0:
+            error_msg = order_response.get("msg", "Unbekannter Fehler")
+            logs.append(f"Fehler beim Order platzieren: {error_msg}")
+            return jsonify({
+                "error": True,
+                "msg": f"Market Order konnte nicht gesetzt werden: {error_msg}",
+                "logs": logs
+            }), 500
+
+        
 
         # Einstiegspreis bestimmen
         entry_price = None
