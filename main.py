@@ -118,9 +118,9 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
 
 
-def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side, reduce_only=True):
-    timestamp = int(time.time() * 1000)
-    params_dict = {
+def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side):
+    endpoint = "/openApi/swap/v2/trade/order"
+    params = {
         "symbol": symbol,
         "side": side.upper(),
         "type": "LIMIT",
@@ -128,18 +128,15 @@ def place_limit_order(api_key, secret_key, symbol, quantity, price, side, positi
         "price": round(price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": reduce_only,
-        "timestamp": timestamp
+        "timestamp": int(time.time() * 1000)
     }
-
-    # Signatur: JSON-string ohne Leerzeichen
-    json_body_str = json.dumps(params_dict, separators=(',', ':'))
-    signature = hmac.new(secret_key.encode('utf-8'), json_body_str.encode('utf-8'), hashlib.sha256).hexdigest()
-    params_dict["signature"] = signature
-
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    
+    # Signatur erzeugen
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    params["signature"] = generate_signature(secret_key, query_string)
+    
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params_dict)
+    response = requests.post(f"{BASE_URL}{endpoint}", headers=headers, json=params)
     return response.json()
 
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
