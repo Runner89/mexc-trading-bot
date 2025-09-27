@@ -209,7 +209,7 @@ def webhook():
             tp_side = "SELL"
         else:
             sl_price = round(entry_price * (1 + sl_percent / 100), 6)  # Stop-Loss über Einstieg
-            tp_price = round(min(entry_price * (1 - tp_percent / 100), current_price * 0.999), 6)
+            tp_price = round(min(entry_price * (1 - tp_percent / 100), price * 0.999), 6)  # Preis-Check gegen Markt
             sl_side = "BUY"
             tp_side = "BUY"
 
