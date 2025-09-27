@@ -167,29 +167,37 @@ def webhook():
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
 
     try:
-        # 1. Verfügbare Margin
+        # 1. Verfügbare Margin abfragen
         balance_resp = get_futures_balance(api_key, secret_key)
         available_margin = float(balance_resp.get("data", {}).get("balance", {}).get("availableMargin", 0))
         logs.append(f"Available Margin: {available_margin}")
-
+        
         # 2. Hebel setzen
         set_leverage(api_key, secret_key, symbol, leverage, position_side)
         logs.append(f"Leverage auf {leverage} gesetzt")
         time.sleep(1)
-
-        # 3. Coin-Menge berechnen
+        
+        # 3. Sicherheits-Puffer einbauen (z.B. 2% weniger als maximal erlaubte Margin)
+        usable_margin = available_margin * 0.98
+        logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
+        
+        # 4. Coin-Menge berechnen
         price = get_current_price(symbol)
         if not price:
             return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
-
-        quantity = round((available_margin * leverage) / price, 6)
-        logs.append(f"Market Order Größe (Coin Menge) = {quantity}")
-
-        # 4. Market Order platzieren
+        
+        quantity = round((usable_margin * leverage) / price, 6)
+        logs.append(f"Market Order Menge (Coin) = {quantity}")
+        
+        # 5. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, quantity, position_side)
         logs.append(f"Market Order Response: {order_resp}")
         if order_resp.get("code") != 0:
-            return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
+            return jsonify({
+                "error": True,
+                "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}",
+                "logs": logs
+            }), 500
 
         time.sleep(1)
         # 5. Einstiegspreis & Positionsgröße abfragen
