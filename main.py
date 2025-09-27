@@ -117,6 +117,8 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
+
+
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
     params_dict = {
@@ -134,6 +136,26 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
+
+
+def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side):
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": side.upper(),
+        "type": "LIMIT",
+        "quantity": round(quantity, 6),
+        "price": round(price, 6),
+        "timeInForce": "GTC",
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = generate_signature(secret_key, query_string)
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=params_dict)
