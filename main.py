@@ -166,29 +166,25 @@ def webhook():
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
 
     try:
-        # 1. Guthaben abfragen
+      # Guthaben abfragen
         balance_response = get_futures_balance(api_key, secret_key)
         available_usdt = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
         logs.append(f"Available USDT (Margin): {available_usdt}")
 
-        # 2. Hebel setzen
-        set_leverage(api_key, secret_key, symbol, leverage, "SHORT")
+        # Hebel setzen
+        set_leverage(api_key, secret_key, symbol, leverage, position_side)
         logs.append(f"Leverage auf {leverage} gesetzt")
 
-        # 3. Market Order mit kompletter verfügbaren Margin (bereits Hebel berücksichtigt)
-        order_size = available_usdt
-        logs.append(f"Ordergröße = Available USDT (Margin bereits Hebel berücksichtigt): {order_size}")
+        # Positionsgröße = verfügbares Guthaben * Hebel
+        order_size = available_usdt * leverage
+        logs.append(f"Ordergröße = Available USDT x Hebel: {order_size}")
 
-        order_response = place_market_order(api_key, secret_key, symbol, order_size, "SHORT")
-        logs.append(f"Market SHORT Order: {order_response}")
+        # Market Order platzieren
+        order_response = place_market_order(api_key, secret_key, symbol, order_size, position_side)
+        logs.append(f"Market Order Response: {order_response}")
 
         if order_response.get("code") != 0:
-            logs.append(f"Fehler beim Order platzieren: {order_response.get('msg')}")
-            return jsonify({
-                "error": True,
-                "msg": f"Market Order konnte nicht gesetzt werden: {order_response.get('msg')}",
-                "logs": logs
-            }), 500
+            return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_response.get('msg')}", "logs": logs}), 500
 
         time.sleep(2)
 
