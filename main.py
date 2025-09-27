@@ -197,22 +197,27 @@ def webhook():
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
         time.sleep(1)
-        # 7. Einstiegspreis & Positionsgröße
-        pos_size, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
+        # 5. Entry Price & Positionsgröße abfragen
+        pos_size, positions_raw, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
+        if not entry_price:
+            return jsonify({"error": True, "msg": "Kein Einstiegspreis ermittelt", "logs": logs}), 500
         logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
-        # 8. SL & TP berechnen
+        # 6. SL & TP berechnen
         if position_side == "LONG":
             sl_price = round(entry_price * (1 - sl_percent / 100), 6)
             tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+            sl_side = "SELL"
+            tp_side = "SELL"
         else:
             sl_price = round(entry_price * (1 + sl_percent / 100), 6)
             tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-        logs.append(f"Stop Loss: {sl_price}, Take Profit: {tp_price}")
+            sl_side = "BUY"
+            tp_side = "BUY"
 
-        # 9. SL & TP Orders platzieren
-        sl_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
-        tp_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
+        # 7. Limit Orders setzen
+        sl_order = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, sl_side, position_side)
+        tp_order = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, tp_side, position_side)
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
