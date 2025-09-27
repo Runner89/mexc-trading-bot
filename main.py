@@ -129,17 +129,18 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
     else:  
         side = "BUY"   # Short wird durch Buy geschlossen
 
-    params_dict = {
+     params_dict = {
         "symbol": symbol,
         "side": side,
         "type": "LIMIT",
-        "quantity": round(quantity, 6),
-        "price": round(limit_price, 6),
+        "quantity": str(round(quantity, 6)),   # alles als String
+        "price": str(round(limit_price, 6)),   # alles als String
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": True,   # GANZ WICHTIG: darf nur die Position schließen!
-        "timestamp": timestamp
+        "reduceOnly": "true",                  # ganz wichtig: als String
+        "timestamp": str(timestamp)
     }
+
 
     # Signatur wie bei deiner funktionierenden Methode
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
