@@ -166,21 +166,17 @@ def webhook():
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
 
     try:
-      # Guthaben abfragen
-        balance_response = get_futures_balance(api_key, secret_key)
-        available_usdt = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0)) * leverage
-        logs.append(f"Available USDT (Margin): {available_usdt}")
-
-        # Hebel setzen
-        set_leverage(api_key, secret_key, symbol, leverage, position_side)
-        logs.append(f"Leverage auf {leverage} gesetzt")
-
-        # Positionsgröße = verfügbares Guthaben * Hebel
-        order_size = available_usdt * leverage
-        logs.append(f"Ordergröße = Available USDT x Hebel: {order_size}")
-
-        # Market Order platzieren
-        order_response = place_market_order(api_key, secret_key, symbol, order_size, position_side)
+        # 1. verfügbare Margin
+        available_margin = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
+        
+        # 2. aktuelle Coin-Preis
+        price = get_current_price(symbol)
+        
+        # 3. Positionsgröße in Coin-Menge unter Berücksichtigung des Hebels
+        quantity = round((available_margin * leverage) / price, 6)
+        
+        # 4. Market Order platzieren
+        order_response = place_market_order(api_key, secret_key, symbol, quantity, position_side)
         logs.append(f"Market Order Response: {order_response}")
 
         if order_response.get("code") != 0:
