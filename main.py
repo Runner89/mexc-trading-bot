@@ -117,17 +117,26 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
-def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
+def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
+   
+   
+   
     timestamp = int(time.time() * 1000)
+
+    if position_side.upper() == "LONG":
+        side = "SELL"  # TP/SL schließen Long
+    else:  # SHORT
+        side = "BUY"   # TP/SL schließen Short
+
     params_dict = {
         "symbol": symbol,
-        "side": "SELL",
+        "side": side,
         "type": "LIMIT",
         "quantity": round(quantity, 6),
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
-        "positionSide": position_side,
-        "reduceOnly": True,  # <--- hinzufügen
+        "positionSide": position_side.upper(),
+        "reduceOnly": True,  # <-- wichtig
         "timestamp": timestamp
     }
 
@@ -214,12 +223,11 @@ def webhook():
         logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
         
         # 8. Limit Orders für TP und SL setzen
-        tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price,
-                                              position_side="LONG" if position_side=="LONG" else "SHORT")
+        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side, "TP")
         logs.append(f"TP Order Response: {tp_order_resp}")
         
-        sl_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price,
-                                              position_side="LONG" if position_side=="LONG" else "SHORT")
+        
+        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side, "SL")
         logs.append(f"SL Order Response: {sl_order_resp}")
 
 
