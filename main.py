@@ -179,7 +179,7 @@ def webhook():
 
         # 3. Sicherheits-Puffer abziehen
         usable_margin = available_margin * 0.98
-        logs.append(f"Usable Margin nach Sicherheits-Puffer ({(1-SAFETY_FACTOR)*100:.0f}%): {usable_margin}")
+        logs.append(f"Usable Margin nach Sicherheits-Puffer ({(1-0.98)*100:.0f}%): {usable_margin}")
 
         # 4. Preis abfragen
         price = get_current_price(symbol)
