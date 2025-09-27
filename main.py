@@ -86,12 +86,14 @@ def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="
     quantity = round(usdt_amount / price, 6)
     timestamp = int(time.time() * 1000)
 
+    side = "BUY" if position_side.upper() == "LONG" else "SELL"
+
     params_dict = {
         "symbol": symbol,
-        "side": "SELL",
+        "side": side,
         "type": "MARKET",
         "quantity": quantity,
-        "positionSide": position_side,
+        "positionSide": position_side.upper(),
         "timestamp": timestamp
     }
 
