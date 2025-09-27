@@ -375,6 +375,8 @@ def webhook():
         order_response = place_market_order(api_key, secret_key, symbol, available_usdt * leverage, "SHORT")
         logs.append(f"Market SHORT Order: {order_response}")
 
+        time.sleep(2)
+
         # Einstiegspreis bestimmen
         entry_price = None
         pos_size, positions_raw, _ = get_current_position(api_key, secret_key, symbol, "SHORT", logs)
