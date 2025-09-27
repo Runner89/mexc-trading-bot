@@ -38,33 +38,36 @@ def get_current_price(symbol: str):
     else:
         return None
 
-def place_market_order(api_key, secret_key, symbol, margin_amount, position_side="LONG"):
-    price = get_current_price(symbol)
-    if price is None:
-        return {"code": 99999, "msg": "Failed to get current price"}
-
-    # Coin-Menge aus Margin * Leverage berechnen
-    quantity = margin_amount / price
-    quantity = round(quantity, 6)
-
+def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
     timestamp = int(time.time() * 1000)
-    side = "BUY" if position_side.upper() == "LONG" else "SELL"
+
+    # Side = entgegengesetzt zur Position
+    if position_side.upper() == "LONG":
+        side = "SELL"  # Long wird durch Sell geschlossen
+    else:  
+        side = "BUY"   # Short wird durch Buy geschlossen
 
     params_dict = {
         "symbol": symbol,
         "side": side,
-        "type": "MARKET",
-        "quantity": quantity,
+        "type": "LIMIT",
+        "quantity": str(round(quantity, 6)),   # als String
+        "price": str(round(limit_price, 6)),   # als String
+        "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "timestamp": timestamp
+        "timestamp": str(timestamp)
     }
 
+    # Signatur berechnen
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
