@@ -118,12 +118,7 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     return position_size, raw_positions, liquidation_price
 
 def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
-    """
-    TP/SL Order für bestehende Position
-    """
     timestamp = int(time.time() * 1000)
-
-    # Side je nach Position
     side = "SELL" if position_side.upper() == "LONG" else "BUY"
 
     params_dict = {
@@ -134,11 +129,10 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": True,
+        "reduceOnly": "true",  # ✅ als String
         "timestamp": timestamp
     }
 
-    # Wichtig: Für POST-Signatur die Parameter **als query string sortiert** zusammenstellen
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
@@ -223,12 +217,12 @@ def webhook():
         logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
         
         # 8. Limit Orders für TP und SL setzen
-        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side, "TP")
+        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Order Response: {tp_order_resp}")
         
-        
-        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side, "SL")
+        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Order Response: {sl_order_resp}")
+
 
 
         return jsonify({
