@@ -189,7 +189,7 @@ def webhook():
         # 5. Coin-Menge berechnen
         quantity = round((usable_margin * leverage) / price, 6)
         logs.append(f"Market Order Menge (Coin) = {quantity}")
-
+        
         # 6. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
@@ -197,6 +197,29 @@ def webhook():
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
         time.sleep(1)
+
+        # Einstiegspreis aus der Antwort abrufen
+        entry_price = float(order_resp.get("data", {}).get("avgPrice", price))
+        pos_size = quantity
+        
+        # 7. SL und TP Preise berechnen
+        if position_side == "LONG":
+            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+        else:  # SHORT
+            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+        
+        logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
+        
+        # 8. Limit Orders für TP und SL setzen
+        tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price,
+                                              position_side="LONG" if position_side=="LONG" else "SHORT")
+        logs.append(f"TP Order Response: {tp_order_resp}")
+        
+        sl_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price,
+                                              position_side="LONG" if position_side=="LONG" else "SHORT")
+        logs.append(f"SL Order Response: {sl_order_resp}")
 
 
         return jsonify({
