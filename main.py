@@ -119,16 +119,15 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
 def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
     """
-    Platziert eine TP/SL-Limit-Order auf einer bestehenden Position.
-    order_type: "TP" oder "SL" (nur für Logging, Side wird intern korrekt gesetzt)
+    Platziert eine Limit-Order (TP/SL) zum Schließen einer bestehenden Position.
     """
     timestamp = int(time.time() * 1000)
 
-    # Side je nach Position
+    # Side = entgegengesetzt zur Position
     if position_side.upper() == "LONG":
-        side = "SELL"  # LONG: TP/SL schließen mit SELL
-    else:  # SHORT
-        side = "BUY"   # SHORT: TP/SL schließen mit BUY
+        side = "SELL"  # Long wird durch Sell geschlossen
+    else:  
+        side = "BUY"   # Short wird durch Buy geschlossen
 
     params_dict = {
         "symbol": symbol,
@@ -138,10 +137,11 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
+        "reduceOnly": True,   # GANZ WICHTIG: darf nur die Position schließen!
         "timestamp": timestamp
     }
 
-    # Signatur wie in deiner funktionierenden alten Methode
+    # Signatur wie bei deiner funktionierenden Methode
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
