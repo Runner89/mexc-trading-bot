@@ -127,6 +127,7 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side,
+        "reduceOnly": True,  # <--- hinzufügen
         "timestamp": timestamp
     }
 
