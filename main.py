@@ -117,9 +117,18 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
+def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
+    """
+    Platziert eine TP/SL-Limit-Order auf einer bestehenden Position.
+    order_type: "TP" oder "SL" (nur für Logging, Side wird intern korrekt gesetzt)
+    """
     timestamp = int(time.time() * 1000)
-    side = "SELL" if position_side.upper() == "LONG" else "BUY"
+
+    # Side je nach Position
+    if position_side.upper() == "LONG":
+        side = "SELL"  # LONG: TP/SL schließen mit SELL
+    else:  # SHORT
+        side = "BUY"   # SHORT: TP/SL schließen mit BUY
 
     params_dict = {
         "symbol": symbol,
@@ -129,17 +138,20 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
-        "reduceOnly": True,  # Boolean, nicht String
         "timestamp": timestamp
     }
 
-    # Query String alphabetisch sortieren für Signatur
+    # Signatur wie in deiner funktionierenden alten Methode
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
+
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
@@ -217,11 +229,12 @@ def webhook():
         logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
         
         # 8. Limit Orders für TP und SL setzen
-        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
+        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side, "TP")
         logs.append(f"TP Order Response: {tp_order_resp}")
         
-        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
+        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side, "SL")
         logs.append(f"SL Order Response: {sl_order_resp}")
+
 
 
 
