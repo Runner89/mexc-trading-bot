@@ -205,15 +205,15 @@ def webhook():
         if position_side == "LONG":
             #sl_price = round(entry_price * (1 - sl_percent / 100), 6)
             #tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-            tp_price = max(entry_price * (1 + tp_percent / 100), price * 1.001)  # SELL über Markt
-            sl_price = max(entry_price * (1 - sl_percent / 100), price * 0.999)  # SELL unter Markt
+            tp_price = round(entry_price * (1 + tp_percent / 100), 6)  # TP über Einstieg
+            sl_price = round(entry_price * (1 - sl_percent / 100), 6)  # SL unter Einstieg
             sl_side = "SELL"
             tp_side = "SELL"
         else:
             # sl_price = round(entry_price * (1 + sl_percent / 100), 6)  # Stop-Loss über Einstieg
             # tp_price = round(min(entry_price * (1 - tp_percent / 100), price * 0.999), 6)  # Preis-Check gegen Markt
-            tp_price = min(entry_price * (1 - tp_percent / 100), price * 0.999)  # BUY unter Markt
-            sl_price = min(entry_price * (1 + sl_percent / 100), price * 0.999)  # STOP-LIMIT BUY ober Markt, evtl. als STOP-LIMIT
+            tp_price = round(entry_price * (1 - tp_percent / 100), 6)  # TP unter Einstieg
+            sl_price = round(entry_price * (1 + sl_percent / 100), 6)  # SL über Einstieg
             
             sl_side = "BUY"
             tp_side = "BUY"
