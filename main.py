@@ -118,7 +118,7 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
 
 
-def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side):
+def place_limit_order(api_key, secret_key, symbol, quantity, price, side, position_side, reduce_only=False):
     endpoint = "/openApi/swap/v2/trade/order"
     params = {
         "symbol": symbol,
@@ -128,13 +128,14 @@ def place_limit_order(api_key, secret_key, symbol, quantity, price, side, positi
         "price": round(price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side.upper(),
+        "reduceOnly": reduce_only,
         "timestamp": int(time.time() * 1000)
     }
-    
+
     # Signatur erzeugen
     query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
     params["signature"] = generate_signature(secret_key, query_string)
-    
+
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
     response = requests.post(f"{BASE_URL}{endpoint}", headers=headers, json=params)
     return response.json()
@@ -200,6 +201,7 @@ def webhook():
         # Limit Orders setzen
         sl_order = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, sl_side, position_side, reduce_only=True)
         tp_order = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, tp_side, position_side, reduce_only=True)
+
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
