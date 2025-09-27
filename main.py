@@ -180,9 +180,11 @@ def webhook():
         set_leverage(api_key, secret_key, symbol, leverage, "SHORT")
         logs.append(f"Leverage auf {leverage} gesetzt")
 
-        # 3. Market Order mit verfügbarer Margin
-        order_response = place_market_order(api_key, secret_key, symbol, available_usdt * leverage, "SHORT")
-        logs.append(f"Market SHORT Order: {order_response}")
+        # 3. Market Order mit kompletter verfügbaren Margin (Hebel ist schon berücksichtigt)
+        order_size = available_usdt  # NICHT mehr mit leverage multiplizieren
+        logs.append(f"Ordergröße = Available USDT: {order_size}")
+
+        order_response = place_market_order(api_key, secret_key, symbol, order_size, "SHORT")
 
         if order_response.get("code") != 0:
             logs.append(f"Fehler beim Order platzieren: {order_response.get('msg')}")
