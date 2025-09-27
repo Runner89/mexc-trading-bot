@@ -203,19 +203,26 @@ def webhook():
 
         # 6. SL & TP berechnen
         if position_side == "LONG":
-            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
-            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+            #sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+            #tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+            tp_price = max(entry_price * (1 + tp_percent / 100), price * 1.001)  # SELL über Markt
+            sl_price = max(entry_price * (1 - sl_percent / 100), price * 0.999)  # SELL unter Markt
             sl_side = "SELL"
             tp_side = "SELL"
         else:
-            sl_price = round(entry_price * (1 + sl_percent / 100), 6)  # Stop-Loss über Einstieg
-            tp_price = round(min(entry_price * (1 - tp_percent / 100), price * 0.999), 6)  # Preis-Check gegen Markt
+            # sl_price = round(entry_price * (1 + sl_percent / 100), 6)  # Stop-Loss über Einstieg
+            # tp_price = round(min(entry_price * (1 - tp_percent / 100), price * 0.999), 6)  # Preis-Check gegen Markt
+            tp_price = min(entry_price * (1 - tp_percent / 100), price * 0.999)  # BUY unter Markt
+            sl_price = min(entry_price * (1 + sl_percent / 100), price * 0.999)  # STOP-LIMIT BUY ober Markt, evtl. als STOP-LIMIT
+            
             sl_side = "BUY"
             tp_side = "BUY"
 
         # 7. Limit Orders setzen
         sl_order = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, sl_side, position_side)
         tp_order = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, tp_side, position_side)
+
+        
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
