@@ -110,7 +110,7 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
         for pos in positions:
             if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
                 position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
-                entry_price = float(pos.get("entryPrice", 0))  # <— Hier richtiges Feld
+                entry_price = float(pos.get("avgPrice", 0))  # <— Hier richtiges Feld
                 break
         
         return position_size, raw_positions, entry_price
