@@ -168,7 +168,7 @@ def webhook():
     try:
       # Guthaben abfragen
         balance_response = get_futures_balance(api_key, secret_key)
-        available_usdt = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
+        available_usdt = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0)) * leverage
         logs.append(f"Available USDT (Margin): {available_usdt}")
 
         # Hebel setzen
@@ -176,7 +176,7 @@ def webhook():
         logs.append(f"Leverage auf {leverage} gesetzt")
 
         # Positionsgröße = verfügbares Guthaben * Hebel
-        order_size = available_usdt * leverage * 2
+        order_size = available_usdt * leverage
         logs.append(f"Ordergröße = Available USDT x Hebel: {order_size}")
 
         # Market Order platzieren
