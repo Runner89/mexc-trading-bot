@@ -161,14 +161,13 @@ def webhook():
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
     sl_percent = float(data.get("RENDER", {}).get("sl_percent", 2))  # Stop Loss %
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  # Take Profit %
-
     position_side = data.get("RENDER", {}).get("position_side", "SHORT").upper()
 
     if not api_key or not secret_key:
         return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
 
     try:
-        # 1. verfügbare Margin abfragen
+        # 1. Guthaben abfragen
         balance_response = get_futures_balance(api_key, secret_key)
         available_margin = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
         logs.append(f"Available Margin: {available_margin}")
@@ -177,17 +176,12 @@ def webhook():
         set_leverage(api_key, secret_key, symbol, leverage, position_side)
         logs.append(f"Leverage auf {leverage} gesetzt")
 
-        # 3. aktuelle Coin-Preis
-        price = get_current_price(symbol)
-        if price is None:
-            return jsonify({"error": True, "msg": "Preis konnte nicht abgerufen werden", "logs": logs}), 500
+        # 3. Market Order Betrag in USDT
+        usdt_amount = available_margin * leverage
+        logs.append(f"Market Order Betrag (USDT) = Available Margin x Leverage: {usdt_amount}")
 
-        # 4. Positionsgröße in Coin-Menge unter Berücksichtigung des Hebels
-        quantity = round((available_margin * leverage) / price, 6)
-        logs.append(f"Market Order Größe (Coin Menge): {quantity}")
-
-        # 5. Market Order platzieren
-        order_response = place_market_order(api_key, secret_key, symbol, available_margin * leverage, position_side)
+        # Market Order platzieren
+        order_response = place_market_order(api_key, secret_key, symbol, usdt_amount, position_side)
         logs.append(f"Market Order Response: {order_response}")
 
         if order_response.get("code") != 0:
@@ -199,7 +193,7 @@ def webhook():
 
         time.sleep(2)
 
-        # 6. Einstiegspreis bestimmen
+        # Einstiegspreis bestimmen
         entry_price = None
         pos_size, positions_raw, _ = get_current_position(api_key, secret_key, symbol, position_side, logs)
         for pos in positions_raw:
@@ -212,14 +206,16 @@ def webhook():
 
         logs.append(f"Einstiegspreis: {entry_price}, Positionsgröße: {pos_size}")
 
-        # 7. SL & TP Preise berechnen
+        # 4. SL & TP Preise berechnen
         sl_price = round(entry_price * (1 + sl_percent / 100), 6) if position_side == "LONG" else round(entry_price * (1 - sl_percent / 100), 6)
         tp_price = round(entry_price * (1 + tp_percent / 100), 6) if position_side == "LONG" else round(entry_price * (1 - tp_percent / 100), 6)
+
         logs.append(f"Stop Loss: {sl_price}, Take Profit: {tp_price}")
 
-        # 8. Limit Orders setzen
+        # 5. Limit Orders setzen
         sl_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         tp_order = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
+
         logs.append(f"SL Order: {sl_order}, TP Order: {tp_order}")
 
         return jsonify({
