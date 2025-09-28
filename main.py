@@ -182,6 +182,8 @@ def webhook():
     secret_key = data.get("RENDER", {}).get("secret_key")
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
+    tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  # Default 1%
+    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1))  # Default 2%
 
     if not symbol or not api_key or not secret_key:
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
