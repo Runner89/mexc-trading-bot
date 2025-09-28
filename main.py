@@ -271,7 +271,7 @@ def webhook():
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
 
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
-    if action == "" 
+    if action == "":
         close_resp = close_open_position(api_key, secret_key, symbol, position_side)
         logs.append(f"Position sofort geschlossen: {close_resp}")
 
