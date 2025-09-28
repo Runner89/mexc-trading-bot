@@ -92,6 +92,40 @@ def sende_telegram_nachricht(botname, text):
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+def close_open_position(api_key, secret_key, symbol, position_side="LONG"):
+
+    logs = []
+
+    # 1. Aktuelle Positionsgröße und Liquidationspreis abfragen
+    position_size, _, liquidation_price = get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
+    
+    if position_size == 0:
+        logs.append(f"Keine offene Position für {symbol} ({position_side}) gefunden.")
+        return {"code": 1, "msg": "Keine offene Position", "logs": logs}
+
+    # 2. Market Sell/Buy zum Schließen der Position
+    side = "SELL" if position_side.upper() == "LONG" else "BUY"
+
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": round(position_size, 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
+
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
@@ -306,6 +340,24 @@ def webhook():
             message = f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}"
             sende_telegram_nachricht("BingX Bot", message)
             logs.append("Telegram-Nachricht gesendet: SL Stop-Market-Order konnte nicht gesetzt werden")
+
+         # Wenn TP oder SL nicht gesetzt werden konnten Position schliessen
+        if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW" \
+            or sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+        
+            # Telegram senden
+            message = f"⚠️ TP oder SL konnte nicht gesetzt werden. Schließe Position sofort!\nSymbol: {symbol}"
+            sende_telegram_nachricht("BingX Bot", message)
+        
+            # Offene Position sofort schließen
+            close_resp = close_open_position(api_key, secret_key, symbol, position_side)
+            logs.append(f"Position sofort geschlossen: {close_resp}")
+        
+            return jsonify({
+                "error": True,
+                "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+                "logs": logs
+            }), 500
 
         return jsonify({
             "error": False,
