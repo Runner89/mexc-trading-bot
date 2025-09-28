@@ -139,6 +139,28 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+def place_stoploss_order(api_key, secret_key, symbol, quantity, stop_price, position_side="SHORT"):
+ 
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": "BUY",  # Short schließen
+        "type": "STOP_MARKET",
+        "quantity": round(quantity, 6),
+        "stopPrice": round(stop_price, 6),
+        "positionSide": position_side,
+        "timestamp": timestamp
+    }
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
+
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
     side_map = {"LONG": "BUY", "SHORT": "SELL"}
@@ -203,16 +225,15 @@ def webhook():
         logs.append(f"Entry Price (avgPrice): {entry_price}")
         logs.append(f"Position Size: {pos_size}")
 
-        # 8. Limit-Order für Take Profit setzen
-        if position_side == "LONG":
-            tp_price = round(entry_price * 1.01, 6)  # +1% über Entry
-            side_for_close = "SELL"
-        else:
-            tp_price = round(entry_price * 0.99, 6)  # -1% unter Entry
-            side_for_close = "BUY"
-
+        # TP Price berechnen (-1% für Short)
+        tp_price = round(entry_price * 0.99, 6)
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
+        
+        # SL Price berechnen (+1% für Short)
+        sl_price = round(entry_price * 1.01, 6)
+        sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
+        logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
 
         return jsonify({
             "error": False,
