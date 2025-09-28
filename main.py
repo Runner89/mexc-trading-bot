@@ -1,3 +1,26 @@
+
+# NUR FUER SHORT POSITIONEN
+
+# Wird die Order nicht ausgeführt, kommt eine Telegramm-Nachricht
+# Wird SL und/oder TP nicht gesetzt, kommt eine Telegramm-Nachricht und die Position wird geschlossen.
+
+
+#{
+#  "RENDER": {
+#    "symbol": "PUMP-USDT",
+#    "api_key": "xxx",
+#    "secret_key": "xxxx",
+#    "position_side": "SHORT",
+#    "leverage": 2,
+#    "sl_percent": 0.9,
+#    "tp_percent": 1.2
+#  }
+#}
+
+
+
+
+
 from flask import Flask, request, jsonify
 import time
 import hmac
@@ -241,137 +264,143 @@ def webhook():
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
-    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1))  
+    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) 
+    action = data.get("vyn", {}).get("action", "").lower()  
 
     if not symbol or not api_key or not secret_key:
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
 
-    try:
-        # 1. verfügbare Margin abfragen
-        balance_resp = get_futures_balance(api_key, secret_key)
-        available_margin = float(balance_resp.get("data", {}).get("balance", {}).get("availableMargin", 0))
-        logs.append(f"Available Margin: {available_margin}")
+    # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
+    if action == "" 
+        close_resp = close_open_position(api_key, secret_key, symbol, position_side)
+        logs.append(f"Position sofort geschlossen: {close_resp}")
 
-        # 2. Hebel setzen
-        set_leverage(api_key, secret_key, symbol, leverage, position_side)
-        logs.append(f"Leverage auf {leverage} gesetzt")
-        time.sleep(1)
-
-        # 3. Sicherheits-Puffer abziehen
-        usable_margin = available_margin * 0.98
-        logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
-
-        # 4. Preis abfragen
-        price = get_current_price(symbol)
-        if not price:
-            return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
-
-        # 5. Coin-Menge berechnen
-        quantity = round((usable_margin * leverage) / price, 6)
-        logs.append(f"Market Order Menge (Coin) = {quantity}")
-
-        # 6. Market Order platzieren
-        order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
-        logs.append(f"Market Order Response: {order_resp}")
-        time.sleep(1)        
-        # Prüfen, ob die Order gefüllt wurde
-        order_status = order_resp.get("data", {}).get("order", {}).get("status")
-        if order_resp.get("code") != 0 or order_status != "FILLED":
-            # Telegram senden, da keine Position eröffnet wurde
-            message = f"⚠️ Position konnte nicht eröffnet werden!\nSymbol: {symbol}\nResponse: {order_resp}"
-            sende_telegram_nachricht("BingX Bot", message)
-            logs.append("Telegram-Nachricht gesendet: Position konnte nicht eröffnet werden")
-        
-            return jsonify({
-                "error": True,
-                "msg": "Market Order konnte nicht gefüllt werden, keine Position eröffnet",
-                "logs": logs
-            }), 500
-        
-        # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
-        time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
-        
-        # Entry Price und Position Size direkt aus Order-Response lesen
-        order_data = order_resp.get("data", {}).get("order", {})
-        entry_price = float(order_data.get("avgPrice", 0))
-        pos_size = float(order_data.get("executedQty", 0))
-
-        logs.append(f"Entry Price (avgPrice): {entry_price}")
-        logs.append(f"Position Size: {pos_size}")
-
-        
-        # TP und SL nur setzen, wenn Position erfolgreich eröffnet wurde
-        if pos_size <= 0:
-            message = f"⚠️ Position wurde nicht eröffnet, daher keine TP/SL gesetzt.\nSymbol: {symbol}"
-            sende_telegram_nachricht("BingX Bot", message)
-            logs.append("Telegram-Nachricht gesendet: Keine TP/SL gesetzt")
-            return jsonify({
-                "error": True,
-                "msg": "Position konnte nicht eröffnet werden, TP/SL nicht gesetzt",
-                "logs": logs
-            }), 500
-
-        # TP und SL berechnen
-        if position_side.upper() == "SHORT":
-            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
-        else:  # Optional für Long
-            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+        try:
+            # 1. verfügbare Margin abfragen
+            balance_resp = get_futures_balance(api_key, secret_key)
+            available_margin = float(balance_resp.get("data", {}).get("balance", {}).get("availableMargin", 0))
+            logs.append(f"Available Margin: {available_margin}")
+    
+            # 2. Hebel setzen
+            set_leverage(api_key, secret_key, symbol, leverage, position_side)
+            logs.append(f"Leverage auf {leverage} gesetzt")
+            time.sleep(1)
+    
+            # 3. Sicherheits-Puffer abziehen
+            usable_margin = available_margin * 0.98
+            logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
+    
+            # 4. Preis abfragen
+            price = get_current_price(symbol)
+            if not price:
+                return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
+    
+            # 5. Coin-Menge berechnen
+            quantity = round((usable_margin * leverage) / price, 6)
+            logs.append(f"Market Order Menge (Coin) = {quantity}")
+    
+            # 6. Market Order platzieren
+            order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
+            logs.append(f"Market Order Response: {order_resp}")
+            time.sleep(1)        
+            # Prüfen, ob die Order gefüllt wurde
+            order_status = order_resp.get("data", {}).get("order", {}).get("status")
+            if order_resp.get("code") != 0 or order_status != "FILLED":
+                # Telegram senden, da keine Position eröffnet wurde
+                message = f"⚠️ Position konnte nicht eröffnet werden!\nSymbol: {symbol}\nResponse: {order_resp}"
+                sende_telegram_nachricht("BingX Bot", message)
+                logs.append("Telegram-Nachricht gesendet: Position konnte nicht eröffnet werden")
             
-        # 7. TP Limit-Order setzen
-        tp_price = round(entry_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
-        tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
-        logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
-        
-        # Prüfen, ob TP gesetzt wurde
-        if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-            message = f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {tp_order_resp}"
-            sende_telegram_nachricht("BingX Bot", message)
-            logs.append("Telegram-Nachricht gesendet: TP Limit-Order konnte nicht gesetzt werden")
-        
-        # 8. SL Stop-Market-Order setzen
-        sl_price = round(entry_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
-        sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
-        logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
-        
-        # Prüfen, ob SL gesetzt wurde
-        if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-            message = f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}"
-            sende_telegram_nachricht("BingX Bot", message)
-            logs.append("Telegram-Nachricht gesendet: SL Stop-Market-Order konnte nicht gesetzt werden")
-
-         # Wenn TP oder SL nicht gesetzt werden konnten Position schliessen
-        if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW" \
-            or sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-        
-            # Telegram senden
-            message = f"⚠️ TP oder SL konnte nicht gesetzt werden. Schließe Position sofort!\nSymbol: {symbol}"
-            sende_telegram_nachricht("BingX Bot", message)
-        
-            # Offene Position sofort schließen
-            close_resp = close_open_position(api_key, secret_key, symbol, position_side)
-            logs.append(f"Position sofort geschlossen: {close_resp}")
-        
+                return jsonify({
+                    "error": True,
+                    "msg": "Market Order konnte nicht gefüllt werden, keine Position eröffnet",
+                    "logs": logs
+                }), 500
+            
+            # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
+            time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
+            
+            # Entry Price und Position Size direkt aus Order-Response lesen
+            order_data = order_resp.get("data", {}).get("order", {})
+            entry_price = float(order_data.get("avgPrice", 0))
+            pos_size = float(order_data.get("executedQty", 0))
+    
+            logs.append(f"Entry Price (avgPrice): {entry_price}")
+            logs.append(f"Position Size: {pos_size}")
+    
+            
+            # TP und SL nur setzen, wenn Position erfolgreich eröffnet wurde
+            if pos_size <= 0:
+                message = f"⚠️ Position wurde nicht eröffnet, daher keine TP/SL gesetzt.\nSymbol: {symbol}"
+                sende_telegram_nachricht("BingX Bot", message)
+                logs.append("Telegram-Nachricht gesendet: Keine TP/SL gesetzt")
+                return jsonify({
+                    "error": True,
+                    "msg": "Position konnte nicht eröffnet werden, TP/SL nicht gesetzt",
+                    "logs": logs
+                }), 500
+    
+            # TP und SL berechnen
+            if position_side.upper() == "SHORT":
+                tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+                sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+            else:  # Optional für Long
+                tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+                sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+                
+            # 7. TP Limit-Order setzen
+            tp_price = round(entry_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
+            tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
+            logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
+            
+            # Prüfen, ob TP gesetzt wurde
+            if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+                message = f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {tp_order_resp}"
+                sende_telegram_nachricht("BingX Bot", message)
+                logs.append("Telegram-Nachricht gesendet: TP Limit-Order konnte nicht gesetzt werden")
+            
+            # 8. SL Stop-Market-Order setzen
+            sl_price = round(entry_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
+            sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
+            logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
+            
+            # Prüfen, ob SL gesetzt wurde
+            if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+                message = f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}"
+                sende_telegram_nachricht("BingX Bot", message)
+                logs.append("Telegram-Nachricht gesendet: SL Stop-Market-Order konnte nicht gesetzt werden")
+    
+             # Wenn TP oder SL nicht gesetzt werden konnten Position schliessen
+            if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW" \
+                or sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+            
+                # Telegram senden
+                message = f"⚠️ TP oder SL konnte nicht gesetzt werden. Schließe Position sofort!\nSymbol: {symbol}"
+                sende_telegram_nachricht("BingX Bot", message)
+            
+                # Offene Position sofort schließen
+                close_resp = close_open_position(api_key, secret_key, symbol, position_side)
+                logs.append(f"Position sofort geschlossen: {close_resp}")
+            
+                return jsonify({
+                    "error": True,
+                    "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+                    "logs": logs
+                }), 500
+    
             return jsonify({
-                "error": True,
-                "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+                "error": False,
+                "status": "position_opened",
+                "symbol": symbol,
+                "entry_price": entry_price,
+                "position_size": pos_size,
+                "tp_price": tp_price,
+                "sl_price": sl_price,
                 "logs": logs
-            }), 500
-
-        return jsonify({
-            "error": False,
-            "status": "position_opened",
-            "symbol": symbol,
-            "entry_price": entry_price,
-            "position_size": pos_size,
-            "tp_price": tp_price,
-            "sl_price": sl_price,
-            "logs": logs
-        })
-
-    except Exception as e:
-        return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
+            })
+    
+        except Exception as e:
+            return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
 
         
 if __name__ == "__main__":
