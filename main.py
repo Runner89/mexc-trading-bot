@@ -161,15 +161,15 @@ def place_stoploss_order(api_key, secret_key, symbol, quantity, stop_price, posi
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
-def place_market_takeprofit_order(api_key, secret_key, symbol, quantity, trigger_price, position_side="SHORT"):
-
+def place_market_takeprofit_fallback(api_key, secret_key, symbol, quantity, position_side="SHORT"):
+   
     timestamp = int(time.time() * 1000)
+    side = "BUY" if position_side.upper() == "SHORT" else "SELL"
     params_dict = {
         "symbol": symbol,
-        "side": "BUY",  # Short schließen
-        "type": "STOP_MARKET",
+        "side": side,
+        "type": "MARKET",
         "quantity": round(quantity, 6),
-        "stopPrice": round(trigger_price, 6),  # Trigger für Market-Order
         "positionSide": position_side,
         "timestamp": timestamp
     }
@@ -260,10 +260,9 @@ def webhook():
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
 
-        # Market-TP als Backup setzen (z.B. 2%)
-        tp_market_price = round(entry_price * 0.98, 6)  # 2% Gewinn bei Short
-        tp_market_resp = place_market_takeprofit_order(api_key, secret_key, symbol, pos_size, tp_market_price, position_side)
-        logs.append(f"TP Market-Fallback gesetzt @ {tp_market_price}: {tp_market_resp}")
+        tp_market_price = round(entry_price * (1 - 0.02), 6)  # optional für Logging
+        tp_market_resp = place_market_takeprofit_fallback(api_key, secret_key, symbol, pos_size, position_side)
+        logs.append(f"TP Market-Fallback gesetzt: {tp_market_resp}")
 
         # 8. SL Stop-Market-Order setzen
         sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
