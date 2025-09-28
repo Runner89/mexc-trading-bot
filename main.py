@@ -121,12 +121,13 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     timestamp = int(time.time() * 1000)
     params_dict = {
         "symbol": symbol,
-        "side": "SELL",
+        "side": "BUY",
         "type": "LIMIT",
         "quantity": round(quantity, 6),
         "price": round(limit_price, 6),
         "timeInForce": "GTC",
         "positionSide": position_side,
+        "reduceOnly": True,  # verhindert versehentliches Öffnen einer neuen Position
         "timestamp": timestamp
     }
 
