@@ -38,41 +38,37 @@ def get_current_price(symbol: str):
     else:
         return None
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
-    timestamp = int(time.time() * 1000)
+def place_market_order(api_key, secret_key, symbol, margin_amount, position_side="LONG"):
+    price = get_current_price(symbol)
+    if price is None:
+        return {"code": 99999, "msg": "Failed to get current price"}
 
-    # Gegenseite der Position für Schließungs-Orders
-    if position_side.upper() == "LONG":
-        side = "SELL"
-    else:
-        side = "BUY"
+    # Coin-Menge aus Margin * Leverage berechnen
+    quantity = margin_amount / price
+    quantity = round(quantity, 6)
+
+    timestamp = int(time.time() * 1000)
+    side = "BUY" if position_side.upper() == "LONG" else "SELL"
 
     params_dict = {
         "symbol": symbol,
         "side": side,
-        "type": "LIMIT",
-        "quantity": str(round(quantity, 6)),   # String nötig für Signatur
-        "price": str(round(limit_price, 6)),
-        "timeInForce": "GTC",
+        "type": "MARKET",
+        "quantity": quantity,
         "positionSide": position_side.upper(),
-        "reduceOnly": True,
-        "timestamp": str(timestamp)
+        "timestamp": timestamp
     }
 
-    # Signatur berechnen
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json"
-    }
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
-    
+
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
         params = {}
@@ -121,10 +117,8 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
-
 def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
     timestamp = int(time.time() * 1000)
-
     params_dict = {
         "symbol": symbol,
         "side": "SELL",
@@ -141,14 +135,9 @@ def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, p
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json"
-    }
-
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
-
 
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
@@ -161,36 +150,6 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     }
     return send_signed_request("POST", endpoint, api_key, secret_key, params)
 
-def place_market_order(api_key, secret_key, symbol, margin_amount, position_side="LONG"):
-    price = get_current_price(symbol)
-    if price is None:
-        return {"code": 99999, "msg": "Failed to get current price"}
-
-    quantity = round(margin_amount / price, 6)
-
-    timestamp = int(time.time() * 1000)
-    side = "BUY" if position_side.upper() == "LONG" else "SELL"
-
-    params_dict = {
-        "symbol": symbol,
-        "side": side,
-        "type": "MARKET",
-        "quantity": quantity,
-        "positionSide": position_side.upper(),
-        "timestamp": timestamp
-    }
-
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
-
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
-
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
@@ -200,8 +159,6 @@ def webhook():
     api_key = data.get("RENDER", {}).get("api_key")
     secret_key = data.get("RENDER", {}).get("secret_key")
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
-    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 2))
-    tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
 
     if not symbol or not api_key or not secret_key:
@@ -230,39 +187,30 @@ def webhook():
         # 5. Coin-Menge berechnen
         quantity = round((usable_margin * leverage) / price, 6)
         logs.append(f"Market Order Menge (Coin) = {quantity}")
-        
+
         # 6. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
         if order_resp.get("code") != 0:
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
-        time.sleep(1)
+        # 7. Entry Price aus Position abfragen
+        pos_size, raw_positions, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
+        if pos_size == 0 or not entry_price:
+            return jsonify({"error": True, "msg": "Position konnte nicht bestätigt werden", "logs": logs}), 500
 
-        # 7. Aktuelle Position abfragen
-        pos_size, raw_positions, liq_price = get_current_position(api_key, secret_key, symbol, position_side)
-        if pos_size <= 0:
-            return jsonify({"error": True, "msg": "Keine offene Position gefunden", "logs": logs}), 500
+        logs.append(f"Entry Price: {entry_price}, Position Size: {pos_size}")
 
-        entry_price = None
-        for pos in raw_positions:
-            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side:
-                entry_price = float(pos.get("avgPrice", 0))  # BingX liefert avgPrice
-                break
-
-        if not entry_price:
-            return jsonify({"error": True, "msg": "Entry Price konnte nicht ermittelt werden", "logs": logs}), 500
-
-        # 8. Take-Profit Preis berechnen (1% über Entry bei LONG, 1% unter Entry bei SHORT)
+        # 8. Limit-Order für Take Profit setzen
         if position_side == "LONG":
-            tp_price = round(entry_price * 1.01, 6)
+            tp_price = round(entry_price * 1.01, 6)  # +1% über Entry
+            side_for_close = "SELL"
         else:
-            tp_price = round(entry_price * 0.99, 6)
+            tp_price = round(entry_price * 0.99, 6)  # -1% unter Entry
+            side_for_close = "BUY"
 
-        # 9. Limit-Sell-Order setzen (deine Funktion)
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
-        logs.append(f"TP Order gesetzt bei {tp_price}, Response: {tp_order_resp}")
-
+        logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
 
         return jsonify({
             "error": False,
@@ -276,6 +224,6 @@ def webhook():
 
     except Exception as e:
         return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
-
+        
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
