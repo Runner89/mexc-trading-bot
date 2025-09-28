@@ -217,13 +217,11 @@ def webhook():
         logs.append(f"Market Order Response: {order_resp}")
         if order_resp.get("code") != 0:
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
-
-        # Entry Price und Position Size direkt aus Order-Response lesen
-        order_data = order_resp.get("data", {}).get("order", {})
-        entry_price = float(order_data.get("avgPrice", 0))
-        pos_size = float(order_data.get("executedQty", 0))
-
-        logs.append(f"Entry Price (avgPrice): {entry_price}")
+        
+        # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
+        time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
+        pos_size, raw_positions, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
+        logs.append(f"Entry Price (tatsächlich von BingX Position): {entry_price}")
         logs.append(f"Position Size: {pos_size}")
 
         # TP und SL berechnen
