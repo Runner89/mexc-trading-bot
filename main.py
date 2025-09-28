@@ -194,12 +194,14 @@ def webhook():
         if order_resp.get("code") != 0:
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
-        # 7. Entry Price aus Position abfragen
-        pos_size, raw_positions, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
-        if pos_size == 0 or not entry_price:
-            return jsonify({"error": True, "msg": "Position konnte nicht bestätigt werden", "logs": logs}), 500
-
-        logs.append(f"Entry Price: {entry_price}, Position Size: {pos_size}")
+             
+        # Entry Price und Position Size direkt aus Order-Response lesen
+        order_data = order_resp.get("data", {}).get("order", {})
+        entry_price = float(order_data.get("avgPrice", 0))
+        pos_size = float(order_data.get("executedQty", 0))
+        
+        logs.append(f"Entry Price (avgPrice): {entry_price}")
+        logs.append(f"Position Size: {pos_size}")
 
         # 8. Limit-Order für Take Profit setzen
         if position_side == "LONG":
