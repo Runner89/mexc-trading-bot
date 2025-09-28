@@ -250,8 +250,8 @@ def webhook():
 
         # TP und SL berechnen
         if position_side.upper() == "SHORT":
-            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
         else:  # Optional für Long
             tp_price = round(entry_price * (1 + tp_percent / 100), 6)
             sl_price = round(entry_price * (1 - sl_percent / 100), 6)
@@ -264,7 +264,7 @@ def webhook():
         tp_market_resp = place_market_takeprofit_fallback(api_key, secret_key, symbol, pos_size, position_side)
         logs.append(f"TP Market-Fallback gesetzt: {tp_market_resp}")
 
-        # 8. SL Stop-Market-Order setzen
+        # 8. SL Stop-Market-Order setzen       
         sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
 
