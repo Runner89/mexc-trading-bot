@@ -226,12 +226,12 @@ def webhook():
         logs.append(f"Position Size: {pos_size}")
 
         # TP Price berechnen (-1% für Short)
-        tp_price = round(entry_price * 0.99, 6)
+        tp_price = round(entry_price * (1 - tp_percent / 100), 6)
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
         
         # SL Price berechnen (+1% für Short)
-        sl_price = round(entry_price * 1.01, 6)
+        sl_price = round(entry_price * (1 + sl_percent / 100), 6)
         sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
 
