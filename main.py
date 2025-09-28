@@ -121,31 +121,21 @@ def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
 
     return position_size, raw_positions, liquidation_price
 
-def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG", order_type="TP"):
-    
-   
-    timestamp = int(time.time() * 1000)
 
-    # Side = entgegengesetzt zur Position
-    if position_side.upper() == "LONG":
-        side = "SELL"  # Long wird durch Sell geschlossen
-    else:  
-        side = "BUY"   # Short wird durch Buy geschlossen
+def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
+    timestamp = int(time.time() * 1000)
 
     params_dict = {
         "symbol": symbol,
-        "side": side,
+        "side": "SELL",
         "type": "LIMIT",
-        "quantity": str(round(quantity, 6)),   # als String
-        "price": str(round(limit_price, 6)),   # als String
+        "quantity": round(quantity, 6),
+        "price": round(limit_price, 6),
         "timeInForce": "GTC",
-        "positionSide": position_side.upper(),
-        "reduceOnly": "true",                  # als String!
-        "timestamp": str(timestamp)
+        "positionSide": position_side,
+        "timestamp": timestamp
     }
 
-
-    # Signatur wie bei deiner funktionierenden Methode
     query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
     signature = generate_signature(secret_key, query_string)
     params_dict["signature"] = signature
@@ -158,6 +148,7 @@ def place_limit_order(api_key, secret_key, symbol, quantity, limit_price, positi
 
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
+
 
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
@@ -248,26 +239,30 @@ def webhook():
 
         time.sleep(1)
 
-        # Einstiegspreis aus der Antwort abrufen
-        entry_price = float(order_resp.get("data", {}).get("avgPrice", price))
-        pos_size = quantity
-        
-        # 7. SL und TP Preise berechnen
+        # 7. Aktuelle Position abfragen
+        pos_size, raw_positions, liq_price = get_current_position(api_key, secret_key, symbol, position_side)
+        if pos_size <= 0:
+            return jsonify({"error": True, "msg": "Keine offene Position gefunden", "logs": logs}), 500
+
+        entry_price = None
+        for pos in raw_positions:
+            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side:
+                entry_price = float(pos.get("avgPrice", 0))  # BingX liefert avgPrice
+                break
+
+        if not entry_price:
+            return jsonify({"error": True, "msg": "Entry Price konnte nicht ermittelt werden", "logs": logs}), 500
+
+        # 8. Take-Profit Preis berechnen (1% über Entry bei LONG, 1% unter Entry bei SHORT)
         if position_side == "LONG":
-            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
-            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-        else:  # SHORT
-            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
-            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-        
-        logs.append(f"SL Price: {sl_price}, TP Price: {tp_price}")
-        
-        # 8. Limit Orders für TP und SL setzen
-        tp_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
-        logs.append(f"TP Order Response: {tp_order_resp}")
-        
-        sl_order_resp = place_limit_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
-        logs.append(f"SL Order Response: {sl_order_resp}")
+            tp_price = round(entry_price * 1.01, 6)
+        else:
+            tp_price = round(entry_price * 0.99, 6)
+
+        # 9. Limit-Sell-Order setzen (deine Funktion)
+        tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
+        logs.append(f"TP Order gesetzt bei {tp_price}, Response: {tp_order_resp}")
+
 
         return jsonify({
             "error": False,
@@ -275,7 +270,6 @@ def webhook():
             "symbol": symbol,
             "entry_price": entry_price,
             "position_size": pos_size,
-            "sl_price": sl_price,
             "tp_price": tp_price,
             "logs": logs
         })
