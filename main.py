@@ -69,6 +69,30 @@ def place_market_order(api_key, secret_key, symbol, margin_amount, position_side
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+
+def sende_telegram_nachricht(botname, text):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return "Telegram nicht konfiguriert"
+    full_text = f"[{botname}] {text}"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": full_text}
+    response = requests.post(url, json=payload)
+    return f"Telegram Antwort: {response.status_code}"
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {
+        "X-BX-APIKEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
+
+
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
         params = {}
@@ -215,14 +239,37 @@ def webhook():
         # 6. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
-        if order_resp.get("code") != 0:
-            return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
+        
+        # Prüfen, ob die Order gefüllt wurde
+        order_status = order_resp.get("data", {}).get("order", {}).get("status")
+        if order_resp.get("code") != 0 or order_status != "FILLED":
+            # Telegram senden, da keine Position eröffnet wurde
+            message = f"⚠️ Position konnte nicht eröffnet werden!\nSymbol: {symbol}\nResponse: {order_resp}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append("Telegram-Nachricht gesendet: Position konnte nicht eröffnet werden")
+        
+            return jsonify({
+                "error": True,
+                "msg": "Market Order konnte nicht gefüllt werden, keine Position eröffnet",
+                "logs": logs
+            }), 500
         
         # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
         time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
         pos_size, raw_positions, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
         logs.append(f"Entry Price (tatsächlich von BingX Position): {entry_price}")
         logs.append(f"Position Size: {pos_size}")
+        
+        # TP und SL nur setzen, wenn Position erfolgreich eröffnet wurde
+        if pos_size <= 0:
+            message = f"⚠️ Position wurde nicht eröffnet, daher keine TP/SL gesetzt.\nSymbol: {symbol}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append("Telegram-Nachricht gesendet: Keine TP/SL gesetzt")
+            return jsonify({
+                "error": True,
+                "msg": "Position konnte nicht eröffnet werden, TP/SL nicht gesetzt",
+                "logs": logs
+            }), 500
 
         # TP und SL berechnen
         if position_side.upper() == "SHORT":
@@ -231,14 +278,28 @@ def webhook():
         else:  # Optional für Long
             tp_price = round(entry_price * (1 + tp_percent / 100), 6)
             sl_price = round(entry_price * (1 - sl_percent / 100), 6)
-
+            
         # 7. TP Limit-Order setzen
+        tp_price = round(entry_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
-
+        
+        # Prüfen, ob TP gesetzt wurde
+        if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+            message = f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {tp_order_resp}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append("Telegram-Nachricht gesendet: TP Limit-Order konnte nicht gesetzt werden")
+        
         # 8. SL Stop-Market-Order setzen
+        sl_price = round(entry_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
         sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
+        
+        # Prüfen, ob SL gesetzt wurde
+        if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+            message = f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append("Telegram-Nachricht gesendet: SL Stop-Market-Order konnte nicht gesetzt werden")
 
         return jsonify({
             "error": False,
@@ -253,6 +314,7 @@ def webhook():
 
     except Exception as e:
         return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
+
         
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
