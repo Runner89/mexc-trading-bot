@@ -161,8 +161,7 @@ def place_stoploss_order(api_key, secret_key, symbol, quantity, stop_price, posi
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
-def place_market_takeprofit_fallback(api_key, secret_key, symbol, quantity, position_side="SHORT"):
-   
+def place_tp_market_fallback(api_key, secret_key, symbol, quantity, position_side="SHORT"):
     timestamp = int(time.time() * 1000)
     side = "BUY" if position_side.upper() == "SHORT" else "SELL"
     params_dict = {
@@ -173,15 +172,13 @@ def place_market_takeprofit_fallback(api_key, secret_key, symbol, quantity, posi
         "positionSide": position_side,
         "timestamp": timestamp
     }
-
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
+    signature = generate_signature(secret_key, "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict)))
     params_dict["signature"] = signature
 
     url = f"{BASE_URL}{ORDER_ENDPOINT}"
     headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
+    return requests.post(url, headers=headers, json=params_dict).json()
+
     
 def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     endpoint = "/openApi/swap/v2/trade/leverage"
@@ -250,8 +247,8 @@ def webhook():
 
         # TP und SL berechnen
         if position_side.upper() == "SHORT":
-            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
         else:  # Optional für Long
             tp_price = round(entry_price * (1 + tp_percent / 100), 6)
             sl_price = round(entry_price * (1 - sl_percent / 100), 6)
@@ -261,7 +258,7 @@ def webhook():
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
 
         tp_market_price = round(entry_price * (1 - 0.02), 6)  # optional für Logging
-        tp_market_resp = place_market_takeprofit_fallback(api_key, secret_key, symbol, pos_size, position_side)
+        tp_market_resp = place_tp_market_fallback(api_key, secret_key, symbol, pos_size, position_side)
         logs.append(f"TP Market-Fallback gesetzt: {tp_market_resp}")
 
         # 8. SL Stop-Market-Order setzen       
