@@ -239,7 +239,7 @@ def webhook():
         # 6. Market Order platzieren
         order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
         logs.append(f"Market Order Response: {order_resp}")
-        
+        time.sleep(1)        
         # Prüfen, ob die Order gefüllt wurde
         order_status = order_resp.get("data", {}).get("order", {}).get("status")
         if order_resp.get("code") != 0 or order_status != "FILLED":
@@ -256,9 +256,15 @@ def webhook():
         
         # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
         time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
-        pos_size, raw_positions, entry_price = get_current_position(api_key, secret_key, symbol, position_side)
-        logs.append(f"Entry Price (tatsächlich von BingX Position): {entry_price}")
+        
+        # Entry Price und Position Size direkt aus Order-Response lesen
+        order_data = order_resp.get("data", {}).get("order", {})
+        entry_price = float(order_data.get("avgPrice", 0))
+        pos_size = float(order_data.get("executedQty", 0))
+
+        logs.append(f"Entry Price (avgPrice): {entry_price}")
         logs.append(f"Position Size: {pos_size}")
+
         
         # TP und SL nur setzen, wenn Position erfolgreich eröffnet wurde
         if pos_size <= 0:
