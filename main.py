@@ -182,8 +182,8 @@ def webhook():
     secret_key = data.get("RENDER", {}).get("secret_key")
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
-    tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  # Default 1%
-    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1))  # Default 2%
+    tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
+    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1))  
 
     if not symbol or not api_key or not secret_key:
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
@@ -201,7 +201,7 @@ def webhook():
 
         # 3. Sicherheits-Puffer abziehen
         usable_margin = available_margin * 0.98
-        logs.append(f"Usable Margin nach Sicherheits-Puffer ({(1-0.98)*100:.0f}%): {usable_margin}")
+        logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
 
         # 4. Preis abfragen
         price = get_current_price(symbol)
@@ -218,22 +218,27 @@ def webhook():
         if order_resp.get("code") != 0:
             return jsonify({"error": True, "msg": f"Market Order konnte nicht gesetzt werden: {order_resp.get('msg')}", "logs": logs}), 500
 
-             
         # Entry Price und Position Size direkt aus Order-Response lesen
         order_data = order_resp.get("data", {}).get("order", {})
         entry_price = float(order_data.get("avgPrice", 0))
         pos_size = float(order_data.get("executedQty", 0))
-        
+
         logs.append(f"Entry Price (avgPrice): {entry_price}")
         logs.append(f"Position Size: {pos_size}")
 
-        # TP Price berechnen (-1% für Short)
-        tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+        # TP und SL berechnen
+        if position_side.upper() == "SHORT":
+            tp_price = round(entry_price * (1 - tp_percent / 100), 6)
+            sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+        else:  # Optional für Long
+            tp_price = round(entry_price * (1 + tp_percent / 100), 6)
+            sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+
+        # 7. TP Limit-Order setzen
         tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
         logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
-        
-        # SL Price berechnen (+1% für Short)
-        sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+
+        # 8. SL Stop-Market-Order setzen
         sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
         logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
 
@@ -244,6 +249,7 @@ def webhook():
             "entry_price": entry_price,
             "position_size": pos_size,
             "tp_price": tp_price,
+            "sl_price": sl_price,
             "logs": logs
         })
 
