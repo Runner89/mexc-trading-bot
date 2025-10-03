@@ -363,8 +363,8 @@ def webhook():
             logs.append(f"Market Order Menge (Coin) = {quantity}")
     
             # 6. Market Order platzieren
-            #order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
-            #logs.append(f"Market Order Response: {order_resp}")
+            order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
+            logs.append(f"Market Order Response: {order_resp}")
             time.sleep(1)        
             # Prüfen, ob die Order gefüllt wurde
             order_status = order_resp.get("data", {}).get("order", {}).get("status")
