@@ -116,10 +116,12 @@ def sende_telegram_nachricht(botname, text):
     return response.json()
 
 def close_all_positions(api_key, secret_key):
+    """
+    Schließt alle offenen LONG- und SHORT-Positionen ohne reduceOnly.
+    """
     logs = []
     closed_positions = []
 
-    # 1. Offene Positionen abrufen
     positions_resp = get_open_positions(api_key, secret_key)
     if positions_resp.get("error"):
         logs.append("Fehler beim Abrufen der Positionen")
@@ -130,25 +132,15 @@ def close_all_positions(api_key, secret_key):
         logs.append("Keine offenen Positionen")
         return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
 
-    # 2. Alle Positionen schließen
     for pos in positions:
         symbol = pos.get("symbol")
         position_side = pos.get("positionSide", "").upper()  # LONG oder SHORT
         qty = float(pos.get("positionAmt", 0))  # Menge der Position
 
         if qty == 0:
-            continue
+            continue  # nur offene Positionen
 
-        # Order-Seite bestimmen
-        order_side = "SELL" if position_side == "LONG" else "BUY"
-
-        resp = place_market_order(
-            api_key=api_key,
-            secret_key=secret_key,
-            symbol=symbol,
-            margin_amount=abs(qty) * float(pos.get("entryPrice", 1)),  # Umrechnung in Margin
-            position_side=position_side
-        )
+        resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
 
         logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
         closed_positions.append({
@@ -157,6 +149,15 @@ def close_all_positions(api_key, secret_key):
             "quantity": qty,
             "response": resp
         })
+
+        # Telegram-Benachrichtigung
+        try:
+            sende_telegram_nachricht(
+                "BingX Bot",
+                f"⚡️ Position geschlossen: {symbol} {position_side} ({qty})\nResponse: {resp}"
+            )
+        except Exception as e:
+            logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
 
     return {"error": False, "closed": closed_positions, "logs": logs}
 
@@ -294,7 +295,7 @@ def webhook():
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
     if action == "":
         close_resp = close_all_positions(api_key, secret_key)
-        logs.append(f"Position sofort geschlossen: {close_resp}")
+        logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
 
         try:
             # 1. verfügbare Margin abfragen
@@ -401,7 +402,7 @@ def webhook():
             
                 # Offene Position sofort schließen
                 close_resp = close_all_positions(api_key, secret_key)
-                logs.append(f"Position sofort geschlossen: {close_resp}")
+                logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
             
                 return jsonify({
                     "error": True,
