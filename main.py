@@ -149,6 +149,11 @@ def close_open_position(api_key, secret_key, symbol, position_side="LONG"):
         "Content-Type": "application/json"
     }
 
+    response = requests.post(url, headers=headers, json=params_dict)
+    result = response.json()
+    logs.append(f"Close Position Response: {result}")
+    return result
+
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
