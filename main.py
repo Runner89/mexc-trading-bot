@@ -115,44 +115,60 @@ def sende_telegram_nachricht(botname, text):
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
-def close_open_position(api_key, secret_key, symbol, position_side="LONG"):
-
+def close_all_positions(api_key, secret_key):
     logs = []
+    endpoint = "/openApi/swap/v2/user/positions"
+    response = send_signed_request("GET", endpoint, api_key, secret_key, {})
 
-    # 1. Aktuelle Positionsgröße und Liquidationspreis abfragen
-    position_size, _, liquidation_price = get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
-    
-    if position_size == 0:
-        logs.append(f"Keine offene Position für {symbol} ({position_side}) gefunden.")
-        return {"code": 1, "msg": "Keine offene Position", "logs": logs}
+    if response.get("code") != 0:
+        return {"error": True, "msg": "Konnte Positionen nicht abfragen", "logs": [response]}
 
-    # 2. Market Sell/Buy zum Schließen der Position
-    side = "SELL" if position_side.upper() == "LONG" else "BUY"
+    positions = response.get("data", [])
+    closed_positions = []
 
-    timestamp = int(time.time() * 1000)
-    params_dict = {
-        "symbol": symbol,
-        "side": side,
-        "type": "MARKET",
-        "quantity": round(position_size, 6),
-        "positionSide": position_side.upper(),
-        "timestamp": timestamp
-    }
+    for pos in positions:
+        try:
+            symbol = pos.get("symbol")
+            position_side = pos.get("positionSide", "").upper()
+            amt = float(pos.get("positionAmt", 0))
 
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
+            if amt == 0:
+                continue  # keine offene Position
 
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json"
-    }
+            # Position schließen (immer Market)
+            side = "SELL" if amt > 0 else "BUY"  # LONG schließen mit SELL, SHORT schließen mit BUY
+            qty = abs(amt)
 
-    response = requests.post(url, headers=headers, json=params_dict)
-    result = response.json()
-    logs.append(f"Close Position Response: {result}")
-    return result
+            timestamp = int(time.time() * 1000)
+            params_dict = {
+                "symbol": symbol,
+                "side": side,
+                "type": "MARKET",
+                "quantity": round(qty, 6),
+                "positionSide": position_side,
+                "timestamp": timestamp
+            }
+
+            query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+            signature = generate_signature(secret_key, query_string)
+            params_dict["signature"] = signature
+
+            url = f"{BASE_URL}{ORDER_ENDPOINT}"
+            headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+            resp = requests.post(url, headers=headers, json=params_dict).json()
+
+            logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
+            closed_positions.append({
+                "symbol": symbol,
+                "side": position_side,
+                "quantity": qty,
+                "response": resp
+            })
+
+        except Exception as e:
+            logs.append(f"Fehler beim Schließen von {pos}: {str(e)}")
+
+    return {"error": False, "closed": closed_positions, "logs": logs}
 
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
@@ -277,7 +293,7 @@ def webhook():
 
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
     if action == "":
-        close_resp = close_open_position(api_key, secret_key, symbol, position_side)
+        close_resp = close_all_positions(api_key, secret_key, symbol, position_side)
         logs.append(f"Position sofort geschlossen: {close_resp}")
 
         try:
