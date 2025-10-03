@@ -122,43 +122,38 @@ def close_all_positions(api_key, secret_key):
     # 1. Offene Positionen abrufen
     positions_resp = get_open_positions(api_key, secret_key)
     if positions_resp.get("error"):
+        logs.append("Fehler beim Abrufen der Positionen")
         return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
 
     positions = positions_resp.get("data", [])
     if not positions:
+        logs.append("Keine offenen Positionen")
         return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
 
-    # 2. Alle offenen Positionen durchgehen und schließen
+    # 2. Alle Positionen schließen
     for pos in positions:
         symbol = pos.get("symbol")
-        side = pos.get("positionSide", "").upper()  # LONG oder SHORT
-        qty = float(pos.get("positionAmt", 0))
+        position_side = pos.get("positionSide", "").upper()  # LONG oder SHORT
+        qty = float(pos.get("positionAmt", 0))  # Menge der Position
 
         if qty == 0:
             continue
 
         # Order-Seite bestimmen
-        if side == "LONG":
-            order_side = "SELL"   # Long schließen
-        elif side == "SHORT":
-            order_side = "BUY"    # Short schließen
-        else:
-            continue
+        order_side = "SELL" if position_side == "LONG" else "BUY"
 
-        # Market-Order zum Schließen platzieren
         resp = place_market_order(
             api_key=api_key,
             secret_key=secret_key,
             symbol=symbol,
-            quantity=abs(qty),
-            side=order_side,
-            position_side=side  # wichtig für BingX
+            margin_amount=abs(qty) * float(pos.get("entryPrice", 1)),  # Umrechnung in Margin
+            position_side=position_side
         )
 
-        logs.append(f"Closed {symbol} {side} ({qty}) → {resp}")
+        logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
         closed_positions.append({
             "symbol": symbol,
-            "side": side,
+            "side": position_side,
             "quantity": qty,
             "response": resp
         })
