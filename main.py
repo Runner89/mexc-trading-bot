@@ -134,12 +134,13 @@ def place_market_order_close(api_key, secret_key, symbol, position_amt, position
     return response.json()
 
 def close_all_positions(api_key, secret_key):
-  
     logs = []
     closed_positions = []
 
     positions_resp = get_open_positions(api_key, secret_key)
     if positions_resp.get("error"):
+        # Telegram nur bei Fehler
+        sende_telegram_nachricht("BingX Bot", f"Fehler beim Abrufen der Positionen: {positions_resp.get('msg')}")
         logs.append("Fehler beim Abrufen der Positionen")
         return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
 
@@ -150,34 +151,28 @@ def close_all_positions(api_key, secret_key):
 
     for pos in positions:
         symbol = pos.get("symbol")
-        position_side = pos.get("positionSide", "").upper()  # LONG oder SHORT
-        qty = float(pos.get("positionAmt", 0))  # Menge der Position
+        position_side = pos.get("positionSide", "").upper()
+        qty = float(pos.get("positionAmt", 0))
 
         if qty == 0:
-            continue  # nur offene Positionen
+            continue
 
-        resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
-
-        logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
-        closed_positions.append({
-            "symbol": symbol,
-            "side": position_side,
-            "quantity": qty,
-            "response": resp
-        })
-
-        # Telegram-Benachrichtigung
         try:
-            pass
-            #sende_telegram_nachricht(
-            #    "BingX Bot",
-            #    f"⚡️ Position geschlossen: {symbol} {position_side} ({qty})\nResponse: {resp}"
-            #)
+            resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
+            logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
+            closed_positions.append({
+                "symbol": symbol,
+                "side": position_side,
+                "quantity": qty,
+                "response": resp
+            })
         except Exception as e:
-            logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
+            # Nur bei Fehler Telegram senden
+            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side}: {e}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append(message)
 
     return {"error": False, "closed": closed_positions, "logs": logs}
-
 
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
