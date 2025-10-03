@@ -400,7 +400,7 @@ def webhook():
                 sende_telegram_nachricht("BingX Bot", message)
             
                 # Offene Position sofort schließen
-                close_resp = close_open_position(api_key, secret_key, symbol, position_side)
+                close_resp = close_all_positions(api_key, secret_key)
                 logs.append(f"Position sofort geschlossen: {close_resp}")
             
                 return jsonify({
