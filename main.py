@@ -115,10 +115,26 @@ def sende_telegram_nachricht(botname, text):
     response = requests.post(url, headers=headers, json=params_dict)
     return response.json()
 
+def place_market_order_close(api_key, secret_key, symbol, position_amt, position_side):
+    side = "SELL" if position_side.upper() == "LONG" else "BUY"
+    timestamp = int(time.time() * 1000)
+    params = {
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": abs(position_amt),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    params["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=params)
+    return response.json()
+
 def close_all_positions(api_key, secret_key):
-    """
-    Schließt alle offenen LONG- und SHORT-Positionen ohne reduceOnly.
-    """
+  
     logs = []
     closed_positions = []
 
