@@ -168,15 +168,38 @@ def close_all_positions(api_key, secret_key):
 
         # Telegram-Benachrichtigung
         try:
-            sende_telegram_nachricht(
-                "BingX Bot",
-                f"⚡️ Position geschlossen: {symbol} {position_side} ({qty})\nResponse: {resp}"
-            )
+            #sende_telegram_nachricht(
+            #    "BingX Bot",
+            #    f"⚡️ Position geschlossen: {symbol} {position_side} ({qty})\nResponse: {resp}"
+            #)
         except Exception as e:
             logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
 
     return {"error": False, "closed": closed_positions, "logs": logs}
 
+def place_sl0_limit_order(api_key, secret_key, symbol, quantity, sl0_price, position_side="SHORT"):
+  
+   
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": "SELL",  # Short-Position → Sell-Limit
+        "type": "LIMIT",
+        "quantity": round(quantity, 6),
+        "price": round(sl0_price, 6),
+        "timeInForce": "GTC",
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    signature = generate_signature(secret_key, query_string)
+    params_dict["signature"] = signature
+
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=params_dict)
+    return response.json()
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
@@ -302,8 +325,10 @@ def webhook():
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
-    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) 
-    action = data.get("vyn", {}).get("action", "").lower()  
+    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) # SL
+    sl_percent0 = float(data.get("RENDER", {}).get("sl_percent0", 0))  # Limit-Order
+    action = data.get("vyn", {}).get("action", "").lower() 
+    
 
     if not symbol or not api_key or not secret_key:
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
@@ -425,6 +450,17 @@ def webhook():
                     "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
                     "logs": logs
                 }), 500
+
+            # Für Short-Positionen SL0 als Sell-Limit setzen
+            if position_side.upper() == "SHORT" and sl_percent0 > 0:
+                sl0_price = round(entry_price * (1 + sl_percent0 / 100), 6)
+                sl0_order_resp = place_sl0_limit_order(api_key, secret_key, symbol, pos_size, sl0_price, position_side)
+                logs.append(f"SL0 Sell-Limit Order gesetzt @ {sl0_price}: {sl0_order_resp}")
+            
+                if sl0_order_resp.get("code") != 0 or sl0_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
+                    message = f"⚠️ SL0 Sell-Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl0_order_resp}"
+                    sende_telegram_nachricht("BingX Bot", message)
+                    logs.append("Telegram-Nachricht gesendet: SL0 Sell-Limit-Order konnte nicht gesetzt werden")
     
             return jsonify({
                 "error": False,
