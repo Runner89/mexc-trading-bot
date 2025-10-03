@@ -117,56 +117,51 @@ def sende_telegram_nachricht(botname, text):
 
 def close_all_positions(api_key, secret_key):
     logs = []
-    endpoint = "/openApi/swap/v2/user/positions"
-    response = send_signed_request("GET", endpoint, api_key, secret_key, {})
-
-    if response.get("code") != 0:
-        return {"error": True, "msg": "Konnte Positionen nicht abfragen", "logs": [response]}
-
-    positions = response.get("data", [])
     closed_positions = []
 
+    # 1. Offene Positionen abrufen
+    positions_resp = get_open_positions(api_key, secret_key)
+    if positions_resp.get("error"):
+        return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
+
+    positions = positions_resp.get("data", [])
+    if not positions:
+        return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
+
+    # 2. Alle offenen Positionen durchgehen und schließen
     for pos in positions:
-        try:
-            symbol = pos.get("symbol")
-            position_side = pos.get("positionSide", "").upper()
-            amt = float(pos.get("positionAmt", 0))
+        symbol = pos.get("symbol")
+        side = pos.get("positionSide", "").upper()  # LONG oder SHORT
+        qty = float(pos.get("positionAmt", 0))
 
-            if amt == 0:
-                continue  # keine offene Position
+        if qty == 0:
+            continue
 
-            # Position schließen (immer Market)
-            side = "SELL" if amt > 0 else "BUY"  # LONG schließen mit SELL, SHORT schließen mit BUY
-            qty = abs(amt)
+        # Order-Seite bestimmen
+        if side == "LONG":
+            order_side = "SELL"   # Long schließen
+        elif side == "SHORT":
+            order_side = "BUY"    # Short schließen
+        else:
+            continue
 
-            timestamp = int(time.time() * 1000)
-            params_dict = {
-                "symbol": symbol,
-                "side": side,
-                "type": "MARKET",
-                "quantity": round(qty, 6),
-                "positionSide": position_side,
-                "timestamp": timestamp
-            }
+        # Market-Order zum Schließen platzieren
+        resp = place_market_order(
+            api_key=api_key,
+            secret_key=secret_key,
+            symbol=symbol,
+            quantity=abs(qty),
+            side=order_side,
+            position_side=side  # wichtig für BingX
+        )
 
-            query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-            signature = generate_signature(secret_key, query_string)
-            params_dict["signature"] = signature
-
-            url = f"{BASE_URL}{ORDER_ENDPOINT}"
-            headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-            resp = requests.post(url, headers=headers, json=params_dict).json()
-
-            logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
-            closed_positions.append({
-                "symbol": symbol,
-                "side": position_side,
-                "quantity": qty,
-                "response": resp
-            })
-
-        except Exception as e:
-            logs.append(f"Fehler beim Schließen von {pos}: {str(e)}")
+        logs.append(f"Closed {symbol} {side} ({qty}) → {resp}")
+        closed_positions.append({
+            "symbol": symbol,
+            "side": side,
+            "quantity": qty,
+            "response": resp
+        })
 
     return {"error": False, "closed": closed_positions, "logs": logs}
 
