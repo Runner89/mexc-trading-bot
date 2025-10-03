@@ -1,6 +1,7 @@
 
 # NUR FUER SHORT POSITIONEN
 # Nur bei BO wird eine SHORT-Position eröffnet
+# SL und Limitorder werden aufgrund Preis von Traidingview erstellt und nicht auf dem effektiven Durchschnittspreis von Bingx
 # Der Increase-Befehl hat keine Auswirkung, es passiert nichts.
 # Der close-Befehl schliesst alle offenen Orders.
 # Wird die Order nicht ausgeführt, kommt eine Telegramm-Nachricht
@@ -16,6 +17,7 @@
 #    "leverage": 2,
 #    "sl_percent": 0.9,
 #    "tp_percent": 1.2
+#     "price": xxxxxxxxx
 #  }
 #}
 
