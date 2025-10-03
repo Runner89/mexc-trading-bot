@@ -168,6 +168,7 @@ def close_all_positions(api_key, secret_key):
 
         # Telegram-Benachrichtigung
         try:
+            pass
             #sende_telegram_nachricht(
             #    "BingX Bot",
             #    f"⚡️ Position geschlossen: {symbol} {position_side} ({qty})\nResponse: {resp}"
