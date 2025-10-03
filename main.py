@@ -300,12 +300,28 @@ def webhook():
     position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
     sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) # SL
-    sl_percent0 = float(data.get("RENDER", {}).get("sl_percent0", 0))  # Limit-Order
     action = data.get("vyn", {}).get("action", "").lower() 
     
 
     if not symbol or not api_key or not secret_key:
         return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
+
+    if action == "close":
+        close_resp = close_all_positions(api_key, secret_key)
+        logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
+
+
+        return jsonify({
+                "error": False,
+                "status": "positions_closed",
+                "symbol": symbol,
+                "entry_price": None,
+                "position_size": None,
+                "tp_price": None,
+                "sl_price": None,
+                "logs": logs
+            })  
+        
 
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
     if action == "":
