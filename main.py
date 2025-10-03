@@ -1,6 +1,8 @@
 
 # NUR FUER SHORT POSITIONEN
-
+# Nur bei BO wird eine SHORT-Position eröffnet
+# Der Increase-Befehl hat keine Auswirkung, es passiert nichts.
+# Der close-Befehl schliesst alle offenen Orders.
 # Wird die Order nicht ausgeführt, kommt eine Telegramm-Nachricht
 # Wird SL und/oder TP nicht gesetzt, kommt eine Telegramm-Nachricht und die Position wird geschlossen.
 
@@ -325,8 +327,8 @@ def webhook():
 
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
     if action == "":
-        close_resp = close_all_positions(api_key, secret_key)
-        logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
+        #close_resp = close_all_positions(api_key, secret_key)
+        #logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
 
         try:
             # 1. verfügbare Margin abfragen
