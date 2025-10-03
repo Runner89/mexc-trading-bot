@@ -191,6 +191,16 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
 
     return response.json()
 
+def get_open_positions(api_key, secret_key):
+    endpoint = "/openApi/swap/v2/user/positions"
+    response = send_signed_request("GET", endpoint, api_key, secret_key, {})
+
+    if response.get("code") != 0:
+        return {"error": True, "msg": response.get("msg", "Fehler beim Abrufen der Positionen"), "data": []}
+
+    positions = response.get("data", [])
+    return {"error": False, "data": positions}
+
 def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = "/openApi/swap/v2/user/positions"
     params = {"symbol": symbol}
