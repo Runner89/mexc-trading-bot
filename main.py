@@ -293,7 +293,7 @@ def webhook():
 
     # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
     if action == "":
-        close_resp = close_all_positions(api_key, secret_key, symbol, position_side)
+        close_resp = close_all_positions(api_key, secret_key)
         logs.append(f"Position sofort geschlossen: {close_resp}")
 
         try:
