@@ -303,6 +303,7 @@ def webhook():
     tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
     sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) # SL
     action = data.get("vyn", {}).get("action", "").lower() 
+    webhook_price = float(data.get("RENDER", {}).get("price", 0))
     
 
     if not symbol or not api_key or not secret_key:
@@ -397,14 +398,14 @@ def webhook():
     
             # TP und SL berechnen
             if position_side.upper() == "SHORT":
-                tp_price = round(entry_price * (1 - tp_percent / 100), 6)
-                sl_price = round(entry_price * (1 + sl_percent / 100), 6)
+                tp_price = round(webhook_price  * (1 - tp_percent / 100), 6)
+                sl_price = round(webhook_price  * (1 + sl_percent / 100), 6)
             else:  # Optional für Long
-                tp_price = round(entry_price * (1 + tp_percent / 100), 6)
-                sl_price = round(entry_price * (1 - sl_percent / 100), 6)
+                tp_price = round(webhook_price  * (1 + tp_percent / 100), 6)
+                sl_price = round(webhook_price  * (1 - sl_percent / 100), 6)
                 
             # 7. TP Limit-Order setzen
-            tp_price = round(entry_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
+            tp_price = round(webhook_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
             tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
             logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
             
@@ -415,7 +416,7 @@ def webhook():
                 logs.append("Telegram-Nachricht gesendet: TP Limit-Order konnte nicht gesetzt werden")
             
             # 8. SL Stop-Market-Order setzen
-            sl_price = round(entry_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
+            sl_price = round(webhook_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
             sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
             logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
             
@@ -450,6 +451,7 @@ def webhook():
                 "status": "position_opened",
                 "symbol": symbol,
                 "entry_price": entry_price,
+                "webhook_price": webhook_price,
                 "position_size": pos_size,
                 "tp_price": tp_price,
                 "sl_price": sl_price,
