@@ -1,3 +1,55 @@
+
+####  nur fuer DCA SHORT  ####
+
+#Market Order mit Hebel wird gesetzt
+#Hebel muss in BINGX selber vorher eingestellt werden
+#Preis, welcher im JSON übergeben wurde, wird in Firebase gespeichert
+#der gewichtete Durchschnittspreis wird von Firebase berechnet und entsprechend die Sell-Limit Order gesetzt
+#Bei Alarm wird angegeben, ab welcher SO ein Alarm via Telegramm gesendet wird
+#Verfügbares Guthaben wird ermittelt
+#Ordergrösse für BO = (Verfügbares Guthaben - Sicherheit) * bo_factor; SO wird dann automatisch mal Faktor gerechet
+#Ordergrösse wird in Variable gespeichert, Firebase wird nur als Backup verwendet
+#StopLoss 3% unter Liquidationspreis
+#Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.3% für die Berechnung der Sell-Limit-Order verwendet.
+#Falls Status Fehler werden für den Alarm nicht die Anzahl Kaufpreise gezählt, sondern von der Variablen alarm_counter
+#Wenn action=close ist, wird Position geschlossen
+#Wenn action nicht gefunden wird, ist es die Baseorder
+#vyn Alarm kann benutzt werden (inkl. close-Signal) und dann folgende Alarmnachricht
+#Wenn Position auf BINGX schon gelöscht wurde und bei Traidingview noch nicht, wird der nächste increase-Befehl als Base Order ausgeführt
+#Nach x Stunden seit BO oder nach x SO wird die Sell-Limit-Order auf x % gesetzt
+
+#https://......../webhook
+# action wird vom vyn genommen
+
+#{"vyn":{{strategy.order.alert_message}}, RENDER": {"api_key": {
+#    "api_key": "",
+#    "secret_key": "",
+#    "symbol": "BABY-USDT",
+#    "botname": "Baby_Bot", # muss einmalig sein
+#    "position_side": "LONG",
+#    "sell_percentage": 2.5,
+#    "price": {{close}},
+#    "leverage": 1,
+#    "FIREBASE_SECRET": "",
+#    "alarm": 1,
+#    "pyramiding": 8, grösser als 0, wird nicht berücksichtig für Berechnung, es wird für BO gerechnet: (verfügbares Guthaben  - Sicherheit) * bo_factor
+#    "sicherheit": 96, Sicherheit muss nicht mal Hebel gerechnet werden, wird im Code gemacht
+#    "usdt_factor": 1.4,
+#    "bo_factor": 0.001, wie viel Prozent beträgt die BO im Verhältnis zum verfügbaren Guthaben unter Berücksichtung der Gewichtung aller SO
+#    "base_time2": "", darf nur beim Testen Inhalt enthalten, 2025-08-22T11:22:37.986015+00:00, simulierter Zeitpunkt der BO
+#    "after_h": 48, nach x Stunden seit BO wird Sell-Limit-Order beim nächsten Kauf auf x Prozent gesetzt oder
+#    "after_so": 14, nach x SO wird Sell-Limit-Order beim nächsten Kauf auf x Prozent gesetzt
+#    "sell_percentage2": 0.5
+#    "beenden": "nein" wenn ja, wird keine neue Position nach dem Schliessen der aktuellen Position geöffnet
+#    }}
+
+
+
+#}}
+
+
+
+
 #!/usr/bin/env python3
 # coding: utf-8
 """
