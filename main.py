@@ -635,7 +635,7 @@ def webhook():
 
         if liquidation_price:
             # Stop-Loss ist 3% über Liquidationspreis per Vorgabe (short -> SL > entry)
-            stop_loss_price = round(liquidation_price * 1.03, 6)
+            stop_loss_price = round(liquidation_price * 0.97, 6)
             logs.append(f"Stop-Loss-Preis basierend auf Liquidationspreis {liquidation_price}: {stop_loss_price}")
         else:
             stop_loss_price = None
