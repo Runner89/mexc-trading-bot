@@ -1,31 +1,14 @@
-
-# NUR FUER SHORT POSITIONEN
-# Nur bei BO wird eine SHORT-Position eröffnet
-# SL und Limitorder werden aufgrund Preis von Traidingview erstellt und nicht auf dem effektiven Durchschnittspreis von Bingx
-# Der Increase-Befehl hat keine Auswirkung, es passiert nichts.
-# Der close-Befehl schliesst alle offenen Orders.
-# Wird die Order nicht ausgeführt, kommt eine Telegramm-Nachricht
-# Wird SL und/oder TP nicht gesetzt, kommt eine Telegramm-Nachricht und die Position wird geschlossen.
-
-
-#{
-#  "RENDER": {
-#    "symbol": "PUMP-USDT",
-#    "api_key": "xxx",
-#    "secret_key": "xxxx",
-#    "position_side": "SHORT",
-#    "leverage": 2,
-#    "sl_percent": 0.9,
-#    "tp_percent": 1.2
-#     "price": xxxxxxxxx
-#  }
-#}
-
-
-
-
+#!/usr/bin/env python3
+# coding: utf-8
+"""
+BINGX - Short-only webhook bot
+Basierend auf: "BINGX 22.08.2025 ... FINAL 23.08.2025.txt"
+Anpassung: ausschließlich SHORT-Positionen erlaubt.
+Author: (dein Name)
+"""
 
 from flask import Flask, request, jsonify
+from datetime import datetime, timezone
 import time
 import hmac
 import hashlib
@@ -34,6 +17,7 @@ import os
 
 app = Flask(__name__)
 
+# === Konfiguration / Endpoints ===
 BASE_URL = "https://open-api.bingx.com"
 BALANCE_ENDPOINT = "/openApi/swap/v2/user/balance"
 ORDER_ENDPOINT = "/openApi/swap/v2/trade/order"
@@ -44,155 +28,27 @@ FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+# === Globale States (Caches) ===
+saved_usdt_amounts = {}
+status_fuer_alle = {}
+alarm_counter = {}
+base_order_times = {}
+
+# === Hilfsfunktionen ===
 def generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
-
-def get_futures_balance(api_key: str, secret_key: str):
-    timestamp = int(time.time() * 1000)
-    params = f"timestamp={timestamp}"
-    signature = generate_signature(secret_key, params)
-    url = f"{BASE_URL}{BALANCE_ENDPOINT}?{params}&signature={signature}"
-    headers = {"X-BX-APIKEY": api_key}
-    response = requests.get(url, headers=headers)
-    return response.json()
-
-def get_current_price(symbol: str):
-    url = f"{BASE_URL}{PRICE_ENDPOINT}?symbol={symbol}"
-    response = requests.get(url)
-    data = response.json()
-    if data.get("code") == 0 and "data" in data and "price" in data["data"]:
-        return float(data["data"]["price"])
-    else:
-        return None
-
-def place_market_order(api_key, secret_key, symbol, margin_amount, position_side="LONG"):
-    price = get_current_price(symbol)
-    if price is None:
-        return {"code": 99999, "msg": "Failed to get current price"}
-
-    # Coin-Menge aus Margin * Leverage berechnen
-    quantity = margin_amount / price
-    quantity = round(quantity, 6)
-
-    timestamp = int(time.time() * 1000)
-    side = "BUY" if position_side.upper() == "LONG" else "SELL"
-
-    params_dict = {
-        "symbol": symbol,
-        "side": side,
-        "type": "MARKET",
-        "quantity": quantity,
-        "positionSide": position_side.upper(),
-        "timestamp": timestamp
-    }
-
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
-
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
-
-
-def sende_telegram_nachricht(botname, text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return "Telegram nicht konfiguriert"
-    full_text = f"[{botname}] {text}"
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": full_text}
-    response = requests.post(url, json=payload)
-    return f"Telegram Antwort: {response.status_code}"
-
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
-
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {
-        "X-BX-APIKEY": api_key,
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
-
-def place_market_order_close(api_key, secret_key, symbol, position_amt, position_side):
-    side = "SELL" if position_side.upper() == "LONG" else "BUY"
-    timestamp = int(time.time() * 1000)
-    params = {
-        "symbol": symbol,
-        "side": side,
-        "type": "MARKET",
-        "quantity": abs(position_amt),
-        "positionSide": position_side.upper(),
-        "timestamp": timestamp
-    }
-    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
-    params["signature"] = generate_signature(secret_key, query_string)
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params)
-    return response.json()
-
-def close_all_positions(api_key, secret_key):
-    logs = []
-    closed_positions = []
-
-    positions_resp = get_open_positions(api_key, secret_key)
-    if positions_resp.get("error"):
-        # Telegram nur bei Fehler
-        sende_telegram_nachricht("BingX Bot", f"Fehler beim Abrufen der Positionen: {positions_resp.get('msg')}")
-        logs.append("Fehler beim Abrufen der Positionen")
-        return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
-
-    positions = positions_resp.get("data", [])
-    if not positions:
-        logs.append("Keine offenen Positionen")
-        return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
-
-    for pos in positions:
-        symbol = pos.get("symbol")
-        position_side = pos.get("positionSide", "").upper()
-        qty = float(pos.get("positionAmt", 0))
-
-        if qty == 0:
-            continue
-
-        try:
-            resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
-            logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
-            closed_positions.append({
-                "symbol": symbol,
-                "side": position_side,
-                "quantity": qty,
-                "response": resp
-            })
-        except Exception as e:
-            # Nur bei Fehler Telegram senden
-            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side}: {e}"
-            sende_telegram_nachricht("BingX Bot", message)
-            logs.append(message)
-
-    return {"error": False, "closed": closed_positions, "logs": logs}
-
 
 def send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None:
         params = {}
-
     timestamp = int(time.time() * 1000)
     params['timestamp'] = timestamp
-
+    # create canonical query string by sorting keys
     query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
     signature = hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     params['signature'] = signature
-
     url = f"{BASE_URL}{endpoint}"
     headers = {"X-BX-APIKEY": api_key}
-
     if http_method == "GET":
         response = requests.get(url, headers=headers, params=params)
     elif http_method == "POST":
@@ -201,87 +57,141 @@ def send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
         response = requests.delete(url, headers=headers, params=params)
     else:
         raise ValueError("Unsupported HTTP method")
+    try:
+        return response.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw": response.text}
 
-    return response.json()
-
-def get_open_positions(api_key, secret_key):
-    endpoint = "/openApi/swap/v2/user/positions"
-    response = send_signed_request("GET", endpoint, api_key, secret_key, {})
-
-    if response.get("code") != 0:
-        return {"error": True, "msg": response.get("msg", "Fehler beim Abrufen der Positionen"), "data": []}
-
-    positions = response.get("data", [])
-    return {"error": False, "data": positions}
-
-def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
-    endpoint = "/openApi/swap/v2/user/positions"
-    params = {"symbol": symbol}
-    response = send_signed_request("GET", endpoint, api_key, secret_key, params)
-
-    positions = response.get("data", [])
-    raw_positions = positions if isinstance(positions, list) else []
-
-    position_size = 0
-    liquidation_price = None
-
-    if response.get("code") == 0:
-        for pos in positions:
-            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
-                try:
-                    position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
-                    liquidation_price = float(pos.get("liquidationPrice", 0))
-                except (ValueError, TypeError):
-                    position_size = 0
-                break
-
-    return position_size, raw_positions, liquidation_price
-
-def place_limit_sell_order(api_key, secret_key, symbol, quantity, limit_price, position_side="LONG"):
+def get_futures_balance(api_key: str, secret_key: str):
     timestamp = int(time.time() * 1000)
-    params_dict = {
-        "symbol": symbol,
-        "side": "BUY",
-        "type": "LIMIT",
-        "quantity": round(quantity, 6),
-        "price": round(limit_price, 6),
-        "timeInForce": "GTC",
-        "positionSide": position_side,
-        "timestamp": timestamp
-    }
+    params = f"timestamp={timestamp}"
+    signature = generate_signature(secret_key, params)
+    url = f"{BASE_URL}{BALANCE_ENDPOINT}?{params}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+    resp = requests.get(url, headers=headers)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige Balance-Antwort", "raw": resp.text}
 
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
+def get_current_price(symbol: str):
+    url = f"{BASE_URL}{PRICE_ENDPOINT}?symbol={symbol}"
+    resp = requests.get(url)
+    try:
+        data = resp.json()
+        if data.get("code") == 0 and "data" in data and "price" in data["data"]:
+            return float(data["data"]["price"])
+    except Exception:
+        pass
+    return None
 
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
+# === Firebase helper functions (kopiert / angepasst) ===
+def firebase_speichere_base_order_time(botname, timestamp, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/base_order_time/{botname}.json?auth={firebase_secret}"
+        data = {"base_order_time": timestamp.isoformat()}
+        response = requests.put(url, json=data)
+        return f"Base-Order-Zeit für {botname} gespeichert: {timestamp}, Status: {response.status_code}"
+    except Exception as e:
+        return f"Fehler beim Speichern der Base-Order-Zeit: {e}"
 
-def place_stoploss_order(api_key, secret_key, symbol, quantity, stop_price, position_side="SHORT"):
- 
-    timestamp = int(time.time() * 1000)
-    params_dict = {
-        "symbol": symbol,
-        "side": "BUY",  # Short schließen
-        "type": "STOP_MARKET",
-        "quantity": round(quantity, 6),
-        "stopPrice": round(stop_price, 6),
-        "positionSide": position_side,
-        "timestamp": timestamp
-    }
+def firebase_loesche_base_order_time(botname, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/base_order_time/{botname}.json?auth={firebase_secret}"
+        r = requests.delete(url)
+        return f"Base-Order-Zeitpunkt für {botname} gelöscht, Status: {r.status_code}"
+    except Exception as e:
+        return f"Fehler beim Löschen base_order_time: {e}"
 
-    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
-    signature = generate_signature(secret_key, query_string)
-    params_dict["signature"] = signature
+def firebase_speichere_ordergroesse(botname, betrag, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/ordergroesse/{botname}.json?auth={firebase_secret}"
+        data = {"usdt_amount": betrag}
+        r = requests.put(url, json=data)
+        return f"Ordergröße für {botname} gespeichert: {betrag}, Status: {r.status_code}"
+    except Exception as e:
+        return f"Fehler beim Speichern ordergroesse: {e}"
 
-    url = f"{BASE_URL}{ORDER_ENDPOINT}"
-    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=params_dict)
-    return response.json()
+def firebase_lese_ordergroesse(botname, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/ordergroesse/{botname}.json?auth={firebase_secret}"
+        r = requests.get(url)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if isinstance(data, dict) and "usdt_amount" in data:
+            return float(data["usdt_amount"])
+        elif isinstance(data, (int, float)):
+            return float(data)
+    except Exception:
+        pass
+    return None
 
-def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
+def firebase_speichere_kaufpreis(botname, price, usdt_amount, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/kaufpreise/{botname}.json?auth={firebase_secret}"
+        data = {"price": price, "usdt_amount": usdt_amount}
+        r = requests.post(url, json=data)
+        if r.status_code == 200:
+            return f"Kaufpreis für {botname} erfolgreich gespeichert."
+        else:
+            return f"Fehler beim Speichern Kaufpreis: {r.status_code} {r.text}"
+    except Exception as e:
+        return f"Fehler beim Speichern Kaufpreis: {e}"
+
+def firebase_loesche_kaufpreise(botname, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/kaufpreise/{botname}.json?auth={firebase_secret}"
+        r = requests.delete(url)
+        if r.status_code == 200:
+            return f"Kaufpreise für {botname} gelöscht."
+        return f"Fehler beim Löschen Kaufpreise: Status {r.status_code}"
+    except Exception as e:
+        return f"Fehler beim Löschen Kaufpreise: {e}"
+
+def firebase_lese_kaufpreise(botname, firebase_secret):
+    try:
+        url = f"{FIREBASE_URL}/kaufpreise/{botname}.json?auth={firebase_secret}"
+        r = requests.get(url)
+        if r.status_code != 200:
+            return []
+        daten = r.json()
+        if not daten:
+            return []
+        return [{"price": float(v.get("price", 0)), "usdt_amount": float(v.get("usdt_amount", 0))} for v in daten.values()]
+    except Exception:
+        return []
+
+def berechne_durchschnittspreis(käufe):
+    if not käufe:
+        return None
+    gesamtwert = 0.0
+    gesamtmenge = 0.0
+    for kauf in käufe:
+        preis = float(kauf.get("price", 0))
+        menge = float(kauf.get("usdt_amount", 0))
+        gesamtwert += preis * menge
+        gesamtmenge += menge
+    if gesamtmenge == 0:
+        return None
+    return round(gesamtwert / gesamtmenge, 6)
+
+# === Telegram ===
+def sende_telegram_nachricht(botname, text):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return "Telegram nicht konfiguriert"
+    full_text = f"[{botname}] {text}"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": full_text}
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        return f"Telegram Antwort: {r.status_code}"
+    except Exception as e:
+        return f"Telegram Fehler: {e}"
+
+# === Order-Funktionen (SHORT-optimiert) ===
+def set_leverage(api_key, secret_key, symbol, leverage, position_side="SHORT"):
+    # position_side must be "SHORT" here; map side accordingly
     endpoint = "/openApi/swap/v2/trade/leverage"
     side_map = {"LONG": "BUY", "SHORT": "SELL"}
     params = {
@@ -292,177 +202,658 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
     }
     return send_signed_request("POST", endpoint, api_key, secret_key, params)
 
+def place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="SHORT"):
+    """
+    Platzieren einer Market-Order zum ÖFFNEN einer SHORT-Position.
+    Für SHORT: side="SELL"
+    """
+    price = get_current_price(symbol)
+    if price is None:
+        return {"code": 99999, "msg": "Failed to get current price"}
+    quantity = round(float(usdt_amount) / price, 6)
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": "SELL",  # SHORT eröffnen
+        "type": "MARKET",
+        "quantity": quantity,
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, headers=headers, json=params_dict)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw": resp.text}
+
+def place_market_order_close(api_key, secret_key, symbol, position_amt, position_side="SHORT"):
+    """
+    Schließt eine Position via MARKET (für SHORT -> BUY)
+    position_amt: Menge (positiv)
+    """
+    side = "BUY"  # Short schließen = buy
+    timestamp = int(time.time() * 1000)
+    params = {
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": round(abs(position_amt), 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    params["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, headers=headers, json=params)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw": resp.text}
+
+def place_limit_buy_order(api_key, secret_key, symbol, quantity, limit_price, position_side="SHORT"):
+    """
+    TP für SHORT: BUY Limit (unter Entry).
+    """
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": "BUY",        # um Short zu schließen -> BUY
+        "type": "LIMIT",
+        "quantity": round(quantity, 6),
+        "price": round(limit_price, 6),
+        "timeInForce": "GTC",
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, headers=headers, json=params_dict)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw": resp.text}
+
+def place_stoploss_buy_order(api_key, secret_key, symbol, quantity, stop_price, position_side="SHORT"):
+    """
+    SL für SHORT: BUY STOP_MARKET (über Entry) zum Schließen
+    """
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": "BUY",  # Short schließen = buy
+        "type": "STOP_MARKET",
+        "quantity": round(quantity, 6),
+        "stopPrice": round(stop_price, 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, headers=headers, json=params_dict)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw": resp.text}
+
+def get_open_orders(api_key, secret_key, symbol):
+    timestamp = int(time.time() * 1000)
+    params = f"symbol={symbol}&timestamp={timestamp}"
+    signature = generate_signature(secret_key, params)
+    url = f"{BASE_URL}{OPEN_ORDERS_ENDPOINT}?{params}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+    r = requests.get(url, headers=headers)
+    try:
+        return r.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige Antwort Open Orders", "raw": r.text}
+
+def cancel_order(api_key, secret_key, symbol, order_id):
+    timestamp = int(time.time() * 1000)
+    params = f"symbol={symbol}&orderId={order_id}&timestamp={timestamp}"
+    signature = generate_signature(secret_key, params)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}?{params}&signature={signature}"
+    headers = {"X-BX-APIKEY": api_key}
+    r = requests.delete(url, headers=headers)
+    try:
+        return r.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige Antwort Cancel", "raw": r.text}
+
+# === Positionsabfrage ===
+def get_current_position(api_key, secret_key, symbol, position_side, logs=None):
+    endpoint = "/openApi/swap/v2/user/positions"
+    params = {"symbol": symbol}
+    response = send_signed_request("GET", endpoint, api_key, secret_key, params)
+    positions = response.get("data", []) if isinstance(response.get("data", []), list) else []
+    raw_positions = positions
+    position_size = 0.0
+    liquidation_price = None
+    if logs is not None:
+        logs.append(f"Positions Rohdaten: {raw_positions}")
+    if response.get("code") == 0:
+        for pos in positions:
+            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                try:
+                    position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
+                    liquidation_price = float(pos.get("liquidationPrice", 0)) if pos.get("liquidationPrice") else None
+                    if logs is not None:
+                        logs.append(f"Gefundene Position: size={position_size}, liqPrice={liquidation_price}")
+                except (ValueError, TypeError) as e:
+                    if logs is not None:
+                        logs.append(f"Fehler beim Parsen der Position: {e}")
+                    position_size = 0.0
+                break
+    else:
+        if logs is not None:
+            logs.append(f"API Positions Fehlercode: {response.get('code')}")
+    return position_size, raw_positions, liquidation_price
+
+# === Schließen aller Positionen (nur SHORT relevant) ===
+def close_all_positions(api_key, secret_key):
+    logs = []
+    closed_positions = []
+    positions_resp = get_open_positions_for_all_symbols(api_key, secret_key)
+    if positions_resp.get("error"):
+        sende_telegram_nachricht("BingX Bot", f"Fehler beim Abrufen der Positionen: {positions_resp.get('msg')}")
+        logs.append("Fehler beim Abrufen der Positionen")
+        return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
+    positions = positions_resp.get("data", [])
+    if not positions:
+        logs.append("Keine offenen Positionen")
+        return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
+    for pos in positions:
+        symbol = pos.get("symbol")
+        position_side = pos.get("positionSide", "").upper()
+        qty = float(pos.get("positionAmt", 0) or pos.get("size", 0) or 0)
+        if position_side != "SHORT":
+            continue  # nur SHORTs schließen
+        if qty == 0:
+            continue
+        try:
+            resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
+            logs.append(f"Closed {symbol} {position_side} ({qty}) → {resp}")
+            closed_positions.append({
+                "symbol": symbol,
+                "side": position_side,
+                "quantity": qty,
+                "response": resp
+            })
+        except Exception as e:
+            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side}: {e}"
+            sende_telegram_nachricht("BingX Bot", message)
+            logs.append(message)
+    return {"error": False, "closed": closed_positions, "logs": logs}
+
+def get_open_positions_for_all_symbols(api_key, secret_key):
+    endpoint = "/openApi/swap/v2/user/positions"
+    response = send_signed_request("GET", endpoint, api_key, secret_key, {})
+    if response.get("code") != 0:
+        return {"error": True, "msg": response.get("msg", "Fehler beim Abrufen der Positionen"), "data": []}
+    positions = response.get("data", []) or []
+    return {"error": False, "data": positions}
+
+# === Close helper für webhook 'close' action ===
+def close_open_position(api_key, secret_key, symbol, position_side="SHORT"):
+    logs = []
+    position_size, _, liquidation_price = get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
+    if position_size == 0:
+        logs.append(f"Keine offene Position für {symbol} ({position_side}) gefunden.")
+        return {"code": 1, "msg": "Keine offene Position", "logs": logs}
+    side = "BUY"  # Short schließen
+    timestamp = int(time.time() * 1000)
+    params_dict = {
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": round(position_size, 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+    resp = requests.post(url, headers=headers, json=params_dict)
+    try:
+        result = resp.json()
+    except Exception as e:
+        result = {"code": -1, "msg": f"Fehler beim Parsen der API-Antwort: {e}", "raw_response": resp.text}
+    logs.append(f"Schließen der Position: {result}")
+    return {"result": result, "logs": logs}
+
+# === Webhook route (Hauptlogik) ===
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.json
+    global saved_usdt_amounts, status_fuer_alle, alarm_counter, base_order_times
+
+    data = request.json or {}
     logs = []
 
-    symbol = data.get("RENDER", {}).get("symbol")
+    # Pflicht: botname
+    botname = data.get("RENDER", {}).get("botname")
+    if not botname:
+        return jsonify({"error": True, "msg": "botname ist erforderlich"}), 400
+
+    # Basis-Parameter
+    symbol = data.get("RENDER", {}).get("symbol", "")
     api_key = data.get("RENDER", {}).get("api_key")
     secret_key = data.get("RENDER", {}).get("secret_key")
+    firebase_secret = data.get("RENDER", {}).get("FIREBASE_SECRET")
+    position_side = (data.get("RENDER", {}).get("position_side") or data.get("RENDER", {}).get("positionSide") or "SHORT").upper()
+    # Erzwinge SHORT-only
+    if position_side != "SHORT":
+        return jsonify({"error": True, "msg": "Nur position_side=SHORT erlaubt. Abgebrochen."}), 400
+
+    # Weitere parameter
+    pyramiding = float(data.get("RENDER", {}).get("pyramiding", 1))
     leverage = float(data.get("RENDER", {}).get("leverage", 1))
-    position_side = data.get("RENDER", {}).get("position_side", "LONG").upper()
-    tp_percent = float(data.get("RENDER", {}).get("tp_percent", 1))  
-    sl_percent = float(data.get("RENDER", {}).get("sl_percent", 1)) # SL
-    action = data.get("vyn", {}).get("action", "").lower() 
-    webhook_price = float(data.get("RENDER", {}).get("price", 0))
-    
+    sicherheit_param = float(data.get("RENDER", {}).get("sicherheit", 0))
+    # Hinweis: in vielen deiner bisherigen Codes wurde Sicherheiten mit Hebel multipliziert -> beibehalten falls gewünscht
+    sicherheit = sicherheit_param * leverage
+    sell_percentage = data.get("RENDER", {}).get("sell_percentage")
+    price_from_webhook = data.get("RENDER", {}).get("price")
+    usdt_factor = float(data.get("RENDER", {}).get("usdt_factor", 1))
+    bo_factor = float(data.get("RENDER", {}).get("bo_factor", 0.0001))
+    action = data.get("vyn", {}).get("action", "").lower()
+    base_time2 = data.get("RENDER", {}).get("base_time2")
+    after_h = data.get("RENDER", {}).get("after_h", 48)
+    after_so = data.get("RENDER", {}).get("after_so", 14)
+    sell_percentage2 = data.get("RENDER", {}).get("sell_percentage2")
+    beenden = data.get("RENDER", {}).get("beenden", "nein")
 
-    if not symbol or not api_key or not secret_key:
-        return jsonify({"error": True, "msg": "symbol, api_key und secret_key sind erforderlich"}), 400
+    if not api_key or not secret_key:
+        return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
 
+    # action == "close" -> sofort close der SHORT position
     if action == "close":
-        close_resp = close_all_positions(api_key, secret_key)
-        logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
-
-
+        ergebnis = close_open_position(api_key, secret_key, symbol, position_side)
+        # reset cache für diesen bot
+        saved_usdt_amounts.pop(botname, None)
+        status_fuer_alle.pop(botname, None)
+        alarm_counter.pop(botname, None)
+        base_order_times.pop(botname, None)
+        # optional: firebase löschen
+        if firebase_secret:
+            try:
+                logs.append(firebase_loesche_kaufpreise(botname, firebase_secret))
+                logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
+                logs.append(firebase_loesche_base_order_time(botname, firebase_secret))
+            except Exception as e:
+                logs.append(f"Fehler beim Löschen in Firebase: {e}")
         return jsonify({
-                "error": False,
-                "status": "positions_closed",
-                "symbol": symbol,
-                "entry_price": None,
-                "position_size": None,
-                "tp_price": None,
-                "sl_price": None,
-                "logs": logs
-            })  
-        
+            "status": "position_closed",
+            "botname": botname,
+            "logs": ergebnis.get("logs", []),
+            "result": ergebnis.get("result", None)
+        })
 
-    # nur bei einer Base Order, soll die SHORT-Position ausgefuehrt werden
-    if action == "":
-        #close_resp = close_all_positions(api_key, secret_key)
-        #logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
+    # sonst: Base Order / Increase / sonstiges (nur SHORT)
+    # 0. Guthaben abfragen
+    available_usdt = 0.0
+    try:
+        balance_response = get_futures_balance(api_key, secret_key)
+        logs.append(f"Balance Response: {balance_response}")
+        if balance_response.get("code") == 0:
+            available_margin = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
+            available_usdt = available_margin * leverage
+            logs.append(f"Freies USDT Guthaben (mit Hebel): {available_usdt}")
+        else:
+            logs.append("Fehler beim Abrufen der Balance.")
+    except Exception as e:
+        logs.append(f"Fehler bei Balance-Abfrage: {e}")
+        available_usdt = None
 
+    # 1. Hebel setzen (SHORT)
+    try:
+        logs.append(f"Setze Hebel auf {leverage} für {symbol} (SHORT)...")
+        lev_resp = set_leverage(api_key, secret_key, symbol, leverage, "SHORT")
+        logs.append(f"Leverage Response: {lev_resp}")
+    except Exception as e:
+        logs.append(f"Fehler beim Setzen des Hebels: {e}")
+
+    # 2. Offene Orders abrufen (um alte TP/SL/Limit zu handhaben)
+    open_orders = {}
+    try:
+        open_orders = get_open_orders(api_key, secret_key, symbol)
+        logs.append(f"Open Orders: {open_orders}")
+    except Exception as e:
+        logs.append(f"Fehler bei Orderprüfung: {e}")
+        sende_telegram_nachricht(botname, f"Fehler bei Orderprüfung {botname}: {e}")
+
+    # 3. Ordergrößen-Logik (Compounding / BO factor)
+    usdt_amount = 0
+    saved_usdt_amount = saved_usdt_amounts.get(botname)
+    open_sell_orders_exist = False
+
+    if action == "increase":
+        # Nachkauforder: prüfen ob Position noch offen
+        position_size, _, _ = get_current_position(api_key, secret_key, symbol, "SHORT", logs)
+        logs.append(f"position_size bei increase: {position_size}")
+        if position_size is None:
+            sende_telegram_nachricht(botname, f"Keine Verbindung zu BingX für Bot {botname} - increase aborted")
+            return jsonify({"error": True, "msg": "Keine Verbindung zu BingX – increase aborted", "logs": logs}), 500
+        if position_size > 0:
+            open_sell_orders_exist = True
+        else:
+            # Position bereits geschlossen -> treat as new BO if beenden != "ja"
+            if beenden.lower() == "ja":
+                logs.append("Beenden=ja → Keine neue Base Order")
+                return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
+            else:
+                # Reset caches, proceed to set new BO
+                saved_usdt_amounts.pop(botname, None)
+                status_fuer_alle.pop(botname, None)
+                alarm_counter.pop(botname, None)
+                base_order_times.pop(botname, None)
+                status_fuer_alle[botname] = "OK"
+                alarm_counter[botname] = -1
+                try:
+                    logs.append(firebase_loesche_kaufpreise(botname, firebase_secret))
+                    logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
+                    logs.append(firebase_loesche_base_order_time(botname, firebase_secret))
+                except Exception as e:
+                    logs.append(f"Fehler beim Löschen in Firebase: {e}")
+                open_sell_orders_exist = False
+    else:
+        open_sell_orders_exist = False
+
+    logs.append(f"action={action}, open_sell_orders_exist={open_sell_orders_exist}")
+
+    # First Base Order
+    if not open_sell_orders_exist:
+        if beenden.lower() == "ja":
+            logs.append("Beenden=ja → Keine neue Base Order")
+            return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
+        else:
+            status_fuer_alle[botname] = "OK"
+            alarm_counter[botname] = -1
+            if botname in saved_usdt_amounts:
+                del saved_usdt_amounts[botname]
+                logs.append("Ordergröße im Cache gelöscht (erste Order)")
+            if available_usdt is not None and pyramiding > 0:
+                usdt_amount = max(((available_usdt - sicherheit) * bo_factor), 0)
+                saved_usdt_amounts[botname] = usdt_amount
+                logs.append(f"Erste Ordergröße berechnet: {usdt_amount}")
+    else:
+        # Folgeorders: multiplizieren mit usdt_factor
+        saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
+        if saved_usdt_amount and saved_usdt_amount > 0:
+            usdt_amount = saved_usdt_amount * usdt_factor
+            saved_usdt_amounts[botname] = usdt_amount
+            logs.append(f"Nächste Ordergröße mit Faktor {usdt_factor} berechnet: {usdt_amount}")
+        else:
+            # Fallback Firebase
+            try:
+                usdt_amount = firebase_lese_ordergroesse(botname, firebase_secret) or 0
+                if usdt_amount > 0:
+                    saved_usdt_amounts[botname] = usdt_amount * usdt_factor
+                    usdt_amount = saved_usdt_amounts[botname]
+                    logs.append(f"Ordergröße aus Firebase verwendet und skaliert: {usdt_amount}")
+                    sende_telegram_nachricht(botname, f"ℹ️ Ordergröße aus Firebase verwendet bei Bot: {botname}")
+                else:
+                    logs.append("Keine Ordergröße gefunden (Firebase fallback)")
+            except Exception as e:
+                status_fuer_alle[botname] = "Fehler"
+                logs.append(f"Fehler beim Lesen der Ordergröße aus Firebase: {e}")
+                sende_telegram_nachricht(botname, f"❌ Fehler beim Lesen der Ordergröße aus Firebase {botname}: {e}")
+
+    # 4. Market-Order platzieren (SHORT open)
+    order_response = None
+    try:
+        logs.append(f"Plaziere Market-Order (SHORT) mit {usdt_amount} USDT für {symbol}...")
+        order_response = place_market_order(api_key, secret_key, symbol, float(usdt_amount), "SHORT")
+        alarm_counter[botname] = alarm_counter.get(botname, -1) + 1
+        logs.append(firebase_speichere_ordergroesse(botname, usdt_amount, firebase_secret))
+        time.sleep(1.5)
+        logs.append(f"Market-Order Antwort: {order_response}")
+        if not order_response or order_response.get("code") != 0:
+            status_fuer_alle[botname] = "Fehler"
+            logs.append("Marketorder konnte nicht gesetzt werden.")
+            sende_telegram_nachricht(botname, f"❌❌❌ Marketorder konnte nicht gesetzt werden für Bot: {botname}")
+    except Exception as e:
+        logs.append(f"Fehler bei Marketorder: {e}")
+        status_fuer_alle[botname] = "Fehler"
+        sende_telegram_nachricht(botname, f"❌❌❌ Marketorder konnte nicht gesetzt werden für Bot: {botname}")
+
+    # 5. Positionsgröße & liq price
+    try:
+        sell_quantity, positions_raw, liquidation_price = get_current_position(api_key, secret_key, symbol, "SHORT", logs)
+        if sell_quantity == 0:
+            executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty") if order_response else None
+            if executed_qty_str:
+                sell_quantity = float(executed_qty_str)
+                logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
+
+        if liquidation_price:
+            # Stop-Loss ist 3% über Liquidationspreis per Vorgabe (short -> SL > entry)
+            stop_loss_price = round(liquidation_price * 1.03, 6)
+            logs.append(f"Stop-Loss-Preis basierend auf Liquidationspreis {liquidation_price}: {stop_loss_price}")
+        else:
+            stop_loss_price = None
+            logs.append("Liquidationspreis nicht verfügbar.")
+            sende_telegram_nachricht(botname, f"❌ Liquidationspreis nicht verfügbar für Bot: {botname}")
+    except Exception as e:
+        sell_quantity = 0
+        stop_loss_price = None
+        logs.append(f"Fehler bei Positions-/Liquidationsabfrage: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler bei Positions-/Liquidationsabfrage {botname}: {e}")
+
+    # 6. Kaufpreise ggf. löschen (bei neuer BO)
+    if firebase_secret and not open_sell_orders_exist:
         try:
-            # 1. verfügbare Margin abfragen
-            balance_resp = get_futures_balance(api_key, secret_key)
-            available_margin = float(balance_resp.get("data", {}).get("balance", {}).get("availableMargin", 0))
-            logs.append(f"Available Margin: {available_margin}")
-    
-            # 2. Hebel setzen
-            set_leverage(api_key, secret_key, symbol, leverage, position_side)
-            logs.append(f"Leverage auf {leverage} gesetzt")
-            time.sleep(1)
-    
-            # 3. Sicherheits-Puffer abziehen
-            usable_margin = available_margin * 0.98
-            logs.append(f"Usable Margin nach Sicherheits-Puffer (2%): {usable_margin}")
-    
-            # 4. Preis abfragen
-            price = get_current_price(symbol)
-            if not price:
-                return jsonify({"error": True, "msg": "Preis konnte nicht abgefragt werden", "logs": logs}), 500
-    
-            # 5. Coin-Menge berechnen
-            quantity = round((usable_margin * leverage) / price, 6)
-            logs.append(f"Market Order Menge (Coin) = {quantity}")
-    
-            # 6. Market Order platzieren
-            order_resp = place_market_order(api_key, secret_key, symbol, usable_margin * leverage, position_side)
-            logs.append(f"Market Order Response: {order_resp}")
-            time.sleep(1)        
-            # Prüfen, ob die Order gefüllt wurde
-            order_status = order_resp.get("data", {}).get("order", {}).get("status")
-            if order_resp.get("code") != 0 or order_status != "FILLED":
-                # Telegram senden, da keine Position eröffnet wurde
-                message = f"⚠️ Position konnte nicht eröffnet werden!\nSymbol: {symbol}\nResponse: {order_resp}"
-                sende_telegram_nachricht("BingX Bot", message)
-                logs.append("Telegram-Nachricht gesendet: Position konnte nicht eröffnet werden")
-            
-                return jsonify({
-                    "error": True,
-                    "msg": "Market Order konnte nicht gefüllt werden, keine Position eröffnet",
-                    "logs": logs
-                }), 500
-            
-            # 6b. Positionsdaten direkt abfragen, um den echten Entry Price zu bekommen
-            time.sleep(1)  # kurze Wartezeit, bis Order vollständig gefüllt ist
-            
-            # Entry Price und Position Size direkt aus Order-Response lesen
-            order_data = order_resp.get("data", {}).get("order", {})
-            entry_price = float(order_data.get("avgPrice", 0))
-            pos_size = float(order_data.get("executedQty", 0))
-    
-            logs.append(f"Entry Price (avgPrice): {entry_price}")
-            logs.append(f"Position Size: {pos_size}")
-    
-            
-            # TP und SL nur setzen, wenn Position erfolgreich eröffnet wurde
-            if pos_size <= 0:
-                message = f"⚠️ Position wurde nicht eröffnet, daher keine TP/SL gesetzt.\nSymbol: {symbol}"
-                sende_telegram_nachricht("BingX Bot", message)
-                logs.append("Telegram-Nachricht gesendet: Keine TP/SL gesetzt")
-                return jsonify({
-                    "error": True,
-                    "msg": "Position konnte nicht eröffnet werden, TP/SL nicht gesetzt",
-                    "logs": logs
-                }), 500
-    
-            # TP und SL berechnen
-            if position_side.upper() == "SHORT":
-                tp_price = round(webhook_price  * (1 - tp_percent / 100), 6)
-                sl_price = round(webhook_price  * (1 + sl_percent / 100), 6)
-            else:  # Optional für Long
-                tp_price = round(webhook_price  * (1 + tp_percent / 100), 6)
-                sl_price = round(webhook_price  * (1 - sl_percent / 100), 6)
-                
-            # 7. TP Limit-Order setzen
-            tp_price = round(webhook_price * (1 + tp_percent / 100 if position_side == "LONG" else 1 - tp_percent / 100), 6)
-            tp_order_resp = place_limit_sell_order(api_key, secret_key, symbol, pos_size, tp_price, position_side)
-            logs.append(f"TP Limit Order gesetzt @ {tp_price}: {tp_order_resp}")
-            
-            # Prüfen, ob TP gesetzt wurde
-            if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-                message = f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {tp_order_resp}"
-                sende_telegram_nachricht("BingX Bot", message)
-                logs.append("Telegram-Nachricht gesendet: TP Limit-Order konnte nicht gesetzt werden")
-            
-            # 8. SL Stop-Market-Order setzen
-            sl_price = round(webhook_price * (1 - sl_percent / 100 if position_side == "LONG" else 1 + sl_percent / 100), 6)
-            sl_order_resp = place_stoploss_order(api_key, secret_key, symbol, pos_size, sl_price, position_side)
-            logs.append(f"SL Stop-Market Order gesetzt @ {sl_price}: {sl_order_resp}")
-            
-            # Prüfen, ob SL gesetzt wurde
-            if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-                message = f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}"
-                sende_telegram_nachricht("BingX Bot", message)
-                logs.append("Telegram-Nachricht gesendet: SL Stop-Market-Order konnte nicht gesetzt werden")
-    
-             # Wenn TP oder SL nicht gesetzt werden konnten Position schliessen
-            if tp_order_resp.get("code") != 0 or tp_order_resp.get("data", {}).get("order", {}).get("status") != "NEW" \
-                or sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") != "NEW":
-            
-                # Telegram senden
-                message = f"⚠️ TP oder SL konnte nicht gesetzt werden. Schließe Position sofort!\nSymbol: {symbol}"
-                sende_telegram_nachricht("BingX Bot", message)
-            
-                # Offene Position sofort schließen
-                close_resp = close_all_positions(api_key, secret_key)
-                logs.append(f"Alle offenen Positionen geschlossen: {close_resp}")
-            
-                return jsonify({
-                    "error": True,
-                    "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
-                    "logs": logs
-                }), 500
-
-    
-    
-            return jsonify({
-                "error": False,
-                "status": "position_opened",
-                "symbol": symbol,
-                "entry_price": entry_price,
-                "webhook_price": webhook_price,
-                "position_size": pos_size,
-                "tp_price": tp_price,
-                "sl_price": sl_price,
-                "logs": logs
-            })
-    
+            logs.append(firebase_loesche_kaufpreise(botname, firebase_secret))
         except Exception as e:
-            return jsonify({"error": True, "msg": str(e), "logs": logs}), 500
+            logs.append(f"Fehler beim Löschen der Kaufpreise: {e}")
+            status_fuer_alle[botname] = "Fehler"
 
-        
+    # 7. Kaufpreis speichern in Firebase (falls vorhanden)
+    if firebase_secret and price_from_webhook:
+        try:
+            logs.append(firebase_speichere_kaufpreis(botname, float(price_from_webhook), float(usdt_amount), firebase_secret))
+        except Exception as e:
+            logs.append(f"Fehler beim Speichern Kaufpreis: {e}")
+            status_fuer_alle[botname] = "Fehler"
+
+    # 8. Durchschnittspreis (Firebase oder BingX fallback)
+    durchschnittspreis = None
+    kaufpreise = []
+    if status_fuer_alle.get(botname) == "Fehler":
+        logs.append("Status Fehler -> Fallback auf BingX avgPrice")
+        try:
+            for pos in positions_raw:
+                if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
+                    avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                    if avg_price > 0:
+                        durchschnittspreis = round(avg_price * (1 - 0.003), 6)
+                        logs.append(f"[Fallback] Durchschnittspreis (BingX, adjust): {durchschnittspreis}")
+                        sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
+                        break
+        except Exception as e:
+            logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+    else:
+        try:
+            if firebase_secret:
+                kaufpreise = firebase_lese_kaufpreise(botname, firebase_secret)
+                logs.append(f"[Firebase] Kaufpreise: {kaufpreise}")
+                durchschnittspreis = berechne_durchschnittspreis(kaufpreise or [])
+                if durchschnittspreis:
+                    logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
+                else:
+                    logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
+                    status_fuer_alle[botname] = "Fehler"
+        except Exception as e:
+            status_fuer_alle[botname] = "Fehler"
+            logs.append(f"[Fehler] Firebase-Zugriff fehlgeschlagen: {e}")
+
+        if not durchschnittspreis or durchschnittspreis == 0:
+            try:
+                for pos in positions_raw:
+                    if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
+                        avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                        if avg_price > 0:
+                            durchschnittspreis = round(avg_price * (1 - 0.002), 6)
+                            logs.append(f"Fallback avgPrice verwendet: {durchschnittspreis}")
+                            sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
+                            status_fuer_alle[botname] = "Fehler"
+                            break
+            except Exception as e:
+                logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+                sende_telegram_nachricht(botname, f"❌ Fallback avgPrice fehlgeschlagen für Bot: {botname}")
+
+    # 9. Alte TP (BUY LIMIT) Orders löschen (nur BUY LIMIT / STOP_MARKET für positionSide SHORT)
+    try:
+        if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+            for order in open_orders.get("data", {}).get("orders", []):
+                # Stop Market oder BUY LIMIT für SHORT löschen (um neu zu setzen)
+                if order.get("positionSide") == "SHORT" and (order.get("type") == "STOP_MARKET" or (order.get("type") == "LIMIT" and order.get("side") == "BUY")):
+                    cancel_resp = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                    logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_resp}")
+    except Exception as e:
+        logs.append(f"Fehler beim Löschen alter Orders: {e}")
+        sende_telegram_nachricht(botname, f"Fehler beim Löschen alter Orders {botname}: {e}")
+
+    # Base Order Zeit speichern, falls neue BO
+    if not open_sell_orders_exist:
+        now = datetime.now(timezone.utc)
+        base_order_times[botname] = now
+        logs.append(f"Base-Order Zeitpunkt gespeichert: {now}")
+        try:
+            logs.append(firebase_speichere_base_order_time(botname, now, firebase_secret))
+        except Exception as e:
+            logs.append(f"Fehler beim Speichern base_order_time in Firebase: {e}")
+
+    else:
+        # Falls Folgeorders: Load/Check base_time
+        if not base_time2:
+            base_time = base_order_times.get(botname)
+        else:
+            try:
+                base_time = datetime.fromisoformat(base_time2)
+                if base_time.tzinfo is None:
+                    base_time = base_time.replace(tzinfo=timezone.utc)
+            except Exception:
+                base_time = None
+        if base_time is None and firebase_secret:
+            try:
+                base_time_str = None
+                # read from firebase
+                url = f"{FIREBASE_URL}/base_order_time/{botname}.json?auth={firebase_secret}"
+                r = requests.get(url)
+                if r.status_code == 200 and r.text:
+                    d = r.json()
+                    base_time_str = d.get("base_order_time") if isinstance(d, dict) else None
+                if base_time_str:
+                    base_time = datetime.fromisoformat(base_time_str)
+                    if base_time.tzinfo is None:
+                        base_time = base_time.replace(tzinfo=timezone.utc)
+                    base_order_times[botname] = base_time
+                    logs.append(f"Base-Order Zeitpunkt aus Firebase geladen: {base_time}")
+            except Exception as e:
+                logs.append(f"Fehler beim Laden base_time aus Firebase: {e}")
+        # prüfen after_h / after_so & ggf sell_percentage anpassen
+        alarm_trigger = int(data.get("RENDER", {}).get("alarm", 0))
+        if status_fuer_alle.get(botname) == "Fehler":
+            anzahl_nachkäufe = alarm_counter.get(botname, -1)
+        else:
+            anzahl_käufe = len(kaufpreise or [])
+            anzahl_nachkäufe = max(anzahl_käufe - 1, 0)
+        if base_time is not None:
+            delta = datetime.now(timezone.utc) - base_time
+            if delta.total_seconds() >= int(after_h) * 3600 or anzahl_nachkäufe >= int(after_so):
+                sell_percentage = sell_percentage2
+                logs.append("Zeit oder Nachkaufgrenze überschritten -> sell_percentage reduziert (sell_percentage2 verwendet).")
+
+    # 10. Take-Profit (TP) und Stop-Loss (SL) setzen (SHORT)
+    limit_order_response = None
+    try:
+        position_size_now, _, _ = get_current_position(api_key, secret_key, symbol, "SHORT", logs)
+        sell_quantity = min(sell_quantity if 'sell_quantity' in locals() else 0, position_size_now)
+        # Für Short: average (durchschnittspreis) sollte > 0
+        if durchschnittspreis and sell_percentage:
+            # sell_percentage for short means how much above/below? In your earlier code sell was for LONG.
+            # For SHORT TP should be under the avg price => TP_price = avg * (1 - sell_percentage/100)
+            limit_price = round(float(durchschnittspreis) * (1 - float(sell_percentage) / 100), 6)
+        elif durchschnittspreis and sell_percentage is None:
+            # fallback if sell_percentage not set: small profit target
+            limit_price = round(float(durchschnittspreis) * 0.99, 6)
+        else:
+            limit_price = 0
+
+        if sell_quantity > 0 and limit_price > 0:
+            limit_order_response = place_limit_buy_order(api_key, secret_key, symbol, sell_quantity, limit_price, "SHORT")
+            logs.append(f"TP Limit(BUY) Order gesetzt @ {limit_price}: {limit_order_response}")
+            # Prüfen ob Limit erfolgreich erstellt
+            if limit_order_response.get("code") != 0 or limit_order_response.get("data", {}).get("order", {}).get("status") not in (None, "NEW",): 
+                # Abhängig von API kann die Struktur variieren; wir prüfen code != 0 als Fehler
+                logs.append("TP Limit-Order möglicherweise nicht erfolgreich gesetzt.")
+                sende_telegram_nachricht(botname, f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {limit_order_response}")
+        else:
+            logs.append("Ungültige Daten für TP (kein limit_price oder sell_quantity=0).")
+    except Exception as e:
+        logs.append(f"Fehler bei TP Limit-Order: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler bei TP Limit-Order für Bot: {botname}")
+
+    # Stop Loss: BUY STOP_MARKET über entry
+    sl_order_resp = None
+    try:
+        if sell_quantity > 0 and stop_loss_price:
+            sl_order_resp = place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "SHORT")
+            logs.append(f"SL Stop-Market(BUY) Order gesetzt @ {stop_loss_price}: {sl_order_resp}")
+            if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") not in (None, "NEW",):
+                logs.append("SL Stop-Market konnte nicht gesetzt werden.")
+                sende_telegram_nachricht(botname, f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}")
+        else:
+            logs.append("Keine SL gesetzt – fehlende Parameter (sell_quantity oder stop_loss_price).")
+            sende_telegram_nachricht(botname, f"⚠️ Keine SL gesetzt (fehlende Daten) für Bot: {botname}")
+    except Exception as e:
+        logs.append(f"Fehler beim Setzen der SL-Order: {e}")
+        sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen der SL für Bot: {botname}: {e}")
+
+    # Wenn TP oder SL nicht gesetzt wurden -> Position schließen & Telegram
+    tp_ok = (limit_order_response and limit_order_response.get("code") == 0) or (limit_order_response is None and limit_price == 0)
+    sl_ok = (sl_order_resp and sl_order_resp.get("code") == 0) or (stop_loss_price is None)
+    # Defensive check: wenn neither properly set and we have a position -> close & notify
+    if sell_quantity > 0 and (not tp_ok or not sl_ok):
+        sende_telegram_nachricht(botname, f"⚠️ TP oder SL konnte(n) nicht gesetzt werden. Schließe Position sofort! Symbol: {symbol}")
+        close_resp = close_all_positions(api_key, secret_key)
+        logs.append(f"Positionen geschlossen weil TP/SL nicht gesetzt: {close_resp}")
+        return jsonify({
+            "error": True,
+            "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+            "logs": logs
+        }), 500
+
+    # final response
+    return jsonify({
+        "error": False,
+        "order_result": order_response,
+        "limit_order_result": limit_order_response,
+        "sl_order_result": sl_order_resp,
+        "symbol": symbol,
+        "botname": botname,
+        "usdt_amount": usdt_amount,
+        "sell_quantity": sell_quantity if 'sell_quantity' in locals() else 0,
+        "price_from_webhook": price_from_webhook,
+        "sell_percentage": sell_percentage,
+        "firebase_average_price": durchschnittspreis,
+        "firebase_all_prices": kaufpreise,
+        "usdt_balance_before_order": available_usdt,
+        "stop_loss_price": stop_loss_price if 'stop_loss_price' in locals() else None,
+        "saved_usdt_amount": saved_usdt_amounts.get(botname),
+        "status_fuer_alle": status_fuer_alle.get(botname),
+        "Botname": botname,
+        "logs": logs
+    })
+
 if __name__ == "__main__":
+    # Achtung: debug=True in Produktion ausschalten
     app.run(debug=True, host="0.0.0.0", port=5000)
