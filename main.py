@@ -596,25 +596,15 @@ def webhook():
         if position_size > 0:
             open_sell_orders_exist = True
         else:
-            # Position bereits geschlossen -> treat as new BO if beenden != "ja"
-            if beenden.lower() == "ja":
-                logs.append("Beenden=ja → Keine neue Base Order")
-                return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
-            else:
-                # Reset caches, proceed to set new BO
-                saved_usdt_amounts.pop(botname, None)
-                status_fuer_alle.pop(botname, None)
-                alarm_counter.pop(botname, None)
-                base_order_times.pop(botname, None)
-                status_fuer_alle[botname] = "OK"
-                alarm_counter[botname] = -1
-                try:
-                    logs.append(firebase_loesche_kaufpreise(botname, firebase_secret))
-                    logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
-                    logs.append(firebase_loesche_base_order_time(botname, firebase_secret))
-                except Exception as e:
-                    logs.append(f"Fehler beim Löschen in Firebase: {e}")
-                open_sell_orders_exist = False
+            # Position bereits geschlossen -> nichts tun bei increase
+            logs.append("Keine offene Position – increase-Signal wird ignoriert")
+            return jsonify({
+                "status": "increase_ignored_no_open_position",
+                "botname": botname,
+                "reason": "no_open_position",
+                "logs": logs
+            })
+            
     else:
         open_sell_orders_exist = False
 
