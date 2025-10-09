@@ -1214,79 +1214,81 @@ def webhook():
         
 #     #      #      #      #      #      #      #      #     #      #      #      #      #      #      #   #     #      #      #      #      #      #      #   #     #      #      #      #      #      #      #   
 
-    if position_side = "SHORT":
+    if position_side == "SHORT":
         data = request.json or {}
         logs = []
     
         # Pflicht botname
-        botname = data.get(RENDER, {}).get(botname)
-        if not botname
-            return jsonify({error True, msg botname ist erforderlich}), 400
+        botname = data.get("RENDER", {}).get("botname")
+        if not botname:
+            return jsonify({"error": True, "msg": "botname ist erforderlich"}), 400
     
         # Basis-Parameter
-        symbol = data.get(RENDER, {}).get(symbol, )
-        api_key = data.get(RENDER, {}).get(api_key)
-        secret_key = data.get(RENDER, {}).get(secret_key)
-        firebase_secret = data.get(RENDER, {}).get(FIREBASE_SECRET)
-        position_side = (data.get(RENDER, {}).get(position_side) or data.get(RENDER, {}).get(positionSide) or SHORT).upper()
+        symbol = data.get("RENDER", {}).get("symbol", "")
+        api_key = data.get("RENDER", {}).get("api_key")
+        secret_key = data.get("RENDER", {}).get("secret_key")
+        firebase_secret = data.get("RENDER", {}).get("FIREBASE_SECRET")
+        position_side = (
+            data.get("RENDER", {}).get("position_side") 
+            or data.get("RENDER", {}).get("positionSide") 
+            or "SHORT"
+        ).upper()
+    
         # Erzwinge SHORT-only
-        if position_side != SHORT
-            return jsonify({error True, msg Nur position_side=SHORT erlaubt. Abgebrochen.}), 400
+        if position_side != "SHORT":
+            return jsonify({"error": True, "msg": "Nur position_side=SHORT erlaubt. Abgebrochen."}), 400
     
-        # Weitere parameter
-        pyramiding = float(data.get(RENDER, {}).get(pyramiding, 1))
-        leverage = float(data.get(RENDER, {}).get(leverage, 1))
-        sicherheit_param = float(data.get(RENDER, {}).get(sicherheit, 0))
-        # Hinweis in vielen deiner bisherigen Codes wurde Sicherheiten mit Hebel multipliziert - beibehalten falls gewünscht
-        sicherheit = sicherheit_param  leverage
-        sell_percentage = data.get(RENDER, {}).get(sell_percentage)
-        price_from_webhook = data.get(RENDER, {}).get(price)
-        usdt_factor = float(data.get(RENDER, {}).get(usdt_factor, 1))
-        bo_factor = float(data.get(RENDER, {}).get(bo_factor, 0.0001))
-        action = data.get(vyn, {}).get(action, ).lower()
-        base_time2 = data.get(RENDER, {}).get(base_time2)
-        after_h = data.get(RENDER, {}).get(after_h, 48)
-        after_so = data.get(RENDER, {}).get(after_so, 14)
-        sell_percentage2 = data.get(RENDER, {}).get(sell_percentage2)
-        beenden = data.get(RENDER, {}).get(beenden, nein)
+        # Weitere Parameter
+        pyramiding = float(data.get("RENDER", {}).get("pyramiding", 1))
+        leverage = float(data.get("RENDER", {}).get("leverage", 1))
+        sicherheit_param = float(data.get("RENDER", {}).get("sicherheit", 0))
+        sicherheit = sicherheit_param * leverage
+        sell_percentage = data.get("RENDER", {}).get("sell_percentage")
+        price_from_webhook = data.get("RENDER", {}).get("price")
+        usdt_factor = float(data.get("RENDER", {}).get("usdt_factor", 1))
+        bo_factor = float(data.get("RENDER", {}).get("bo_factor", 0.0001))
+        action = (data.get("vyn", {}).get("action", "")).lower()
+        base_time2 = data.get("RENDER", {}).get("base_time2")
+        after_h = data.get("RENDER", {}).get("after_h", 48)
+        after_so = data.get("RENDER", {}).get("after_so", 14)
+        sell_percentage2 = data.get("RENDER", {}).get("sell_percentage2")
+        beenden = data.get("RENDER", {}).get("beenden", "nein").lower()
     
-        if not api_key or not secret_key
-            return jsonify({error True, msg api_key und secret_key sind erforderlich}), 400
+        if not api_key or not secret_key:
+            return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
     
-            # Check Offene LONG-Position
-        # ------------------------------
-        try
-            long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, LONG, logs)
-            logs.append(fLong Position Size {long_position_size})
-            if long_position_size and long_position_size  0
-                logs.append("Offene LONG-Position vorhanden → keine Aktion ausgeführt.")
-                return jsonify({status long_position_exists, botname botname, logs logs})
-        except Exception as e
-            logs.append(fFehler bei LONG-Positionsprüfung {e})
-            return jsonify({error True, msg Fehler bei LONG-Positionsprüfung, logs logs}), 500
-            
+        # Check Offene LONG-Position
+        try:
+            long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, "LONG", logs)
+            logs.append(f"Long Position Size {long_position_size}")
+            if long_position_size and long_position_size > 0:
+                logs.append("Offene LONG-Position vorhanden -> keine Aktion ausgeführt.")
+                return jsonify({"status": "long_position_exists", "botname": botname, "logs": logs})
+        except Exception as e:
+            logs.append(f"Fehler bei LONG-Positionsprüfung {e}")
+            return jsonify({"error": True, "msg": "Fehler bei LONG-Positionsprüfung", "logs": logs}), 500
     
         # action == close - sofort close der SHORT position
-        if action == close
+        if action == "close":
             ergebnis = SHORT_close_open_position(api_key, secret_key, symbol, position_side)
-            # reset cache für diesen bot
+            # Reset caches
             saved_usdt_amounts.pop(botname, None)
             status_fuer_alle.pop(botname, None)
             alarm_counter.pop(botname, None)
             base_order_times.pop(botname, None)
-            # optional firebase löschen
-            if firebase_secret
-                try
+            # Optional Firebase löschen
+            if firebase_secret:
+                try:
                     logs.append(SHORT_firebase_loesche_kaufpreise(botname, firebase_secret))
                     logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
                     logs.append(SHORT_firebase_loesche_base_order_time(botname, firebase_secret))
-                except Exception as e
-                    logs.append(fFehler beim Löschen in Firebase {e})
+                except Exception as e:
+                    logs.append(f"Fehler beim Löschen in Firebase {e}")
             return jsonify({
-                status position_closed,
-                botname botname,
-                logs ergebnis.get(logs, []),
-                result ergebnis.get(result, None)
+                "status": "position_closed",
+                "botname": botname,
+                "logs": ergebnis.get("logs", []),
+                "result": ergebnis.get("result", None)
             })
     
         # sonst Base Order  Increase  sonstiges (nur SHORT)
