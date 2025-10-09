@@ -814,7 +814,7 @@ def SHORT_close_all_positions(api_key, secret_key)
             continue
         try
             resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
-            logs.append(fClosed {symbol} {position_side} ({qty}) → {resp})
+            logs.append(fClosed {symbol} {position_side} ({qty}) -> {resp})
             closed_positions.append({
                 symbol symbol,
                 side position_side,
