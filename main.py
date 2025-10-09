@@ -1218,7 +1218,7 @@ def webhook():
         data = request.json or {}
         logs = []
     
-        # Pflicht botname
+        # Pflicht: botname
         botname = data.get("RENDER", {}).get("botname")
         if not botname:
             return jsonify({"error": True, "msg": "botname ist erforderlich"}), 400
@@ -1228,62 +1228,60 @@ def webhook():
         api_key = data.get("RENDER", {}).get("api_key")
         secret_key = data.get("RENDER", {}).get("secret_key")
         firebase_secret = data.get("RENDER", {}).get("FIREBASE_SECRET")
-        position_side = (
-            data.get("RENDER", {}).get("position_side") 
-            or data.get("RENDER", {}).get("positionSide") 
-            or "SHORT"
-        ).upper()
-    
+        position_side = (data.get("RENDER", {}).get("position_side") or data.get("RENDER", {}).get("positionSide") or "SHORT").upper()
         # Erzwinge SHORT-only
         if position_side != "SHORT":
             return jsonify({"error": True, "msg": "Nur position_side=SHORT erlaubt. Abgebrochen."}), 400
     
-        # Weitere Parameter
+        # Weitere parameter
         pyramiding = float(data.get("RENDER", {}).get("pyramiding", 1))
         leverage = float(data.get("RENDER", {}).get("leverage", 1))
         sicherheit_param = float(data.get("RENDER", {}).get("sicherheit", 0))
+        # Hinweis: in vielen deiner bisherigen Codes wurde Sicherheiten mit Hebel multipliziert -> beibehalten falls gewünscht
         sicherheit = sicherheit_param * leverage
         sell_percentage = data.get("RENDER", {}).get("sell_percentage")
         price_from_webhook = data.get("RENDER", {}).get("price")
         usdt_factor = float(data.get("RENDER", {}).get("usdt_factor", 1))
         bo_factor = float(data.get("RENDER", {}).get("bo_factor", 0.0001))
-        action = (data.get("vyn", {}).get("action", "")).lower()
+        action = data.get("vyn", {}).get("action", "").lower()
         base_time2 = data.get("RENDER", {}).get("base_time2")
         after_h = data.get("RENDER", {}).get("after_h", 48)
         after_so = data.get("RENDER", {}).get("after_so", 14)
         sell_percentage2 = data.get("RENDER", {}).get("sell_percentage2")
-        beenden = data.get("RENDER", {}).get("beenden", "nein").lower()
+        beenden = data.get("RENDER", {}).get("beenden", "nein")
     
         if not api_key or not secret_key:
             return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
     
-        # Check Offene LONG-Position
-        try:
-            long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, "LONG", logs)
-            logs.append(f"Long Position Size {long_position_size}")
-            if long_position_size and long_position_size > 0:
-                logs.append("Offene LONG-Position vorhanden -> keine Aktion ausgeführt.")
-                return jsonify({"status": "long_position_exists", "botname": botname, "logs": logs})
-        except Exception as e:
-            logs.append(f"Fehler bei LONG-Positionsprüfung {e}")
-            return jsonify({"error": True, "msg": "Fehler bei LONG-Positionsprüfung", "logs": logs}), 500
+            # Check Offene LONG-Position
+        # ------------------------------
+        try
+            long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, LONG, logs)
+            logs.append(fLong Position Size {long_position_size})
+            if long_position_size and long_position_size  0
+                logs.append(Offene LONG-Position vorhanden → keine Aktion ausgeführt.)
+                return jsonify({status long_position_exists, botname botname, logs logs})
+        except Exception as e
+            logs.append(fFehler bei LONG-Positionsprüfung {e})
+            return jsonify({error True, msg Fehler bei LONG-Positionsprüfung, logs logs}), 500
     
-        # action == close - sofort close der SHORT position
+    
+        # action == "close" -> sofort close der SHORT position
         if action == "close":
             ergebnis = SHORT_close_open_position(api_key, secret_key, symbol, position_side)
-            # Reset caches
+            # reset cache für diesen bot
             saved_usdt_amounts.pop(botname, None)
             status_fuer_alle.pop(botname, None)
             alarm_counter.pop(botname, None)
             base_order_times.pop(botname, None)
-            # Optional Firebase löschen
+            # optional: firebase löschen
             if firebase_secret:
                 try:
                     logs.append(SHORT_firebase_loesche_kaufpreise(botname, firebase_secret))
                     logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
                     logs.append(SHORT_firebase_loesche_base_order_time(botname, firebase_secret))
                 except Exception as e:
-                    logs.append(f"Fehler beim Löschen in Firebase {e}")
+                    logs.append(f"Fehler beim Löschen in Firebase: {e}")
             return jsonify({
                 "status": "position_closed",
                 "botname": botname,
@@ -1291,364 +1289,367 @@ def webhook():
                 "result": ergebnis.get("result", None)
             })
     
-        # sonst Base Order  Increase  sonstiges (nur SHORT)
+        # sonst: Base Order / Increase / sonstiges (nur SHORT)
         # 0. Guthaben abfragen
         available_usdt = 0.0
-        try
+        try:
             balance_response = SHORT_get_futures_balance(api_key, secret_key)
-            logs.append(fBalance Response {balance_response})
-            if balance_response.get(code) == 0
-                available_margin = float(balance_response.get(data, {}).get(balance, {}).get(availableMargin, 0))
-                available_usdt = available_margin  leverage
-                logs.append(fFreies USDT Guthaben (mit Hebel) {available_usdt})
-            else
-                logs.append(Fehler beim Abrufen der Balance.)
-        except Exception as e
-            logs.append(fFehler bei Balance-Abfrage {e})
+            logs.append(f"Balance Response: {balance_response}")
+            if balance_response.get("code") == 0:
+                available_margin = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
+                available_usdt = available_margin * leverage
+                logs.append(f"Freies USDT Guthaben (mit Hebel): {available_usdt}")
+            else:
+                logs.append("Fehler beim Abrufen der Balance.")
+        except Exception as e:
+            logs.append(f"Fehler bei Balance-Abfrage: {e}")
             available_usdt = None
     
         # 1. Hebel setzen (SHORT)
-        try
-            logs.append(fSetze Hebel auf {leverage} für {symbol} (SHORT)...)
-            lev_resp = SHORT_set_leverage(api_key, secret_key, symbol, leverage, SHORT)
-            logs.append(fLeverage Response {lev_resp})
-        except Exception as e
-            logs.append(fFehler beim Setzen des Hebels {e})
+        try:
+            logs.append(f"Setze Hebel auf {leverage} für {symbol} (SHORT)...")
+            lev_resp = SHORT_set_leverage(api_key, secret_key, symbol, leverage, "SHORT")
+            logs.append(f"Leverage Response: {lev_resp}")
+        except Exception as e:
+            logs.append(f"Fehler beim Setzen des Hebels: {e}")
     
-        # 2. Offene Orders abrufen (um alte TPSLLimit zu handhaben)
+        # 2. Offene Orders abrufen (um alte TP/SL/Limit zu handhaben)
         open_orders = {}
-        try
+        try:
             open_orders = SHORT_get_open_orders(api_key, secret_key, symbol)
-            logs.append(fOpen Orders {open_orders})
-        except Exception as e
-            logs.append(fFehler bei Orderprüfung {e})
-            SHORT_sende_telegram_nachricht(botname, fFehler bei Orderprüfung {botname} {e})
+            logs.append(f"Open Orders: {open_orders}")
+        except Exception as e:
+            logs.append(f"Fehler bei Orderprüfung: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"Fehler bei Orderprüfung {botname}: {e}")
     
-        # 3. Ordergrößen-Logik (Compounding  BO factor)
+        # 3. Ordergrößen-Logik (Compounding / BO factor)
         usdt_amount = 0
         saved_usdt_amount = saved_usdt_amounts.get(botname)
         open_sell_orders_exist = False
     
-        if action == increase
-            # Nachkauforder prüfen ob Position noch offen
-            position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, SHORT, logs)
-            logs.append(fposition_size bei increase {position_size})
-            if position_size is None
-                SHORT_sende_telegram_nachricht(botname, fKeine Verbindung zu BingX für Bot {botname} - increase aborted)
-                return jsonify({error True, msg Keine Verbindung zu BingX – increase aborted, logs logs}), 500
-            if position_size  0
+        if action == "increase":
+            # Nachkauforder: prüfen ob Position noch offen
+            position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, "SHORT", logs)
+            logs.append(f"position_size bei increase: {position_size}")
+            if position_size is None:
+                SHORT_sende_telegram_nachricht(botname, f"Keine Verbindung zu BingX für Bot {botname} - increase aborted")
+                return jsonify({"error": True, "msg": "Keine Verbindung zu BingX – increase aborted", "logs": logs}), 500
+            if position_size > 0:
                 open_sell_orders_exist = True
-            else
-                # Position bereits geschlossen - treat as new BO if beenden != ja
-                if beenden.lower() == ja
-                    logs.append(Beenden=ja → Keine neue Base Order)
-                    return jsonify({status no_base_order_opened, botname botname, reason beenden=ja, logs logs})
-                else
+            else:
+                # Position bereits geschlossen -> treat as new BO if beenden != "ja"
+                if beenden.lower() == "ja":
+                    logs.append("Beenden=ja → Keine neue Base Order")
+                    return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
+                else:
                     # Reset caches, proceed to set new BO
                     saved_usdt_amounts.pop(botname, None)
                     status_fuer_alle.pop(botname, None)
                     alarm_counter.pop(botname, None)
                     base_order_times.pop(botname, None)
-                    status_fuer_alle[botname] = OK
+                    status_fuer_alle[botname] = "OK"
                     alarm_counter[botname] = -1
-                    try
+                    try:
                         logs.append(SHORT_firebase_loesche_kaufpreise(botname, firebase_secret))
                         logs.append(firebase_loesche_ordergroesse(botname, firebase_secret))
                         logs.append(SHORT_firebase_loesche_base_order_time(botname, firebase_secret))
-                    except Exception as e
-                        logs.append(fFehler beim Löschen in Firebase {e})
+                    except Exception as e:
+                        logs.append(f"Fehler beim Löschen in Firebase: {e}")
                     open_sell_orders_exist = False
-        else
+        else:
             open_sell_orders_exist = False
     
-        logs.append(faction={action}, open_sell_orders_exist={open_sell_orders_exist})
+        logs.append(f"action={action}, open_sell_orders_exist={open_sell_orders_exist}")
     
         # First Base Order
-        if not open_sell_orders_exist
-            if beenden.lower() == ja
-                logs.append(Beenden=ja → Keine neue Base Order)
-                return jsonify({status no_base_order_opened, botname botname, reason beenden=ja, logs logs})
-            else
-                status_fuer_alle[botname] = OK
+        if not open_sell_orders_exist:
+            if beenden.lower() == "ja":
+                logs.append("Beenden=ja → Keine neue Base Order")
+                return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
+            else:
+                status_fuer_alle[botname] = "OK"
                 alarm_counter[botname] = -1
-                if botname in saved_usdt_amounts
+                if botname in saved_usdt_amounts:
                     del saved_usdt_amounts[botname]
-                    logs.append(Ordergröße im Cache gelöscht (erste Order))
-                if available_usdt is not None and pyramiding  0
-                    usdt_amount = max(((available_usdt - sicherheit)  bo_factor), 0)
+                    logs.append("Ordergröße im Cache gelöscht (erste Order)")
+                if available_usdt is not None and pyramiding > 0:
+                    usdt_amount = max(((available_usdt - sicherheit) * bo_factor), 0)
                     saved_usdt_amounts[botname] = usdt_amount
-                    logs.append(fErste Ordergröße berechnet {usdt_amount})
-        else
-            # Folgeorders multiplizieren mit usdt_factor
+                    logs.append(f"Erste Ordergröße berechnet: {usdt_amount}")
+        else:
+            # Folgeorders: multiplizieren mit usdt_factor
             saved_usdt_amount = saved_usdt_amounts.get(botname, 0)
-            if saved_usdt_amount and saved_usdt_amount  0
-                usdt_amount = saved_usdt_amount  usdt_factor
+            if saved_usdt_amount and saved_usdt_amount > 0:
+                usdt_amount = saved_usdt_amount * usdt_factor
                 saved_usdt_amounts[botname] = usdt_amount
-                logs.append(fNächste Ordergröße mit Faktor {usdt_factor} berechnet {usdt_amount})
-            else
+                logs.append(f"Nächste Ordergröße mit Faktor {usdt_factor} berechnet: {usdt_amount}")
+            else:
                 # Fallback Firebase
-                try
+                try:
                     usdt_amount = SHORT_firebase_lese_ordergroesse(botname, firebase_secret) or 0
-                    if usdt_amount  0
-                        saved_usdt_amounts[botname] = usdt_amount  usdt_factor
+                    if usdt_amount > 0:
+                        saved_usdt_amounts[botname] = usdt_amount * usdt_factor
                         usdt_amount = saved_usdt_amounts[botname]
-                        logs.append(fOrdergröße aus Firebase verwendet und skaliert {usdt_amount})
-                        SHORT_sende_telegram_nachricht(botname, fℹ️ Ordergröße aus Firebase verwendet bei Bot {botname})
-                    else
-                        logs.append(Keine Ordergröße gefunden (Firebase fallback))
-                except Exception as e
-                    status_fuer_alle[botname] = Fehler
-                    logs.append(fFehler beim Lesen der Ordergröße aus Firebase {e})
-                    SHORT_sende_telegram_nachricht(botname, f❌ Fehler beim Lesen der Ordergröße aus Firebase {botname} {e})
+                        logs.append(f"Ordergröße aus Firebase verwendet und skaliert: {usdt_amount}")
+                        SHORT_sende_telegram_nachricht(botname, f"ℹ️ Ordergröße aus Firebase verwendet bei Bot: {botname}")
+                    else:
+                        logs.append("Keine Ordergröße gefunden (Firebase fallback)")
+                except Exception as e:
+                    status_fuer_alle[botname] = "Fehler"
+                    logs.append(f"Fehler beim Lesen der Ordergröße aus Firebase: {e}")
+                    SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Lesen der Ordergröße aus Firebase {botname}: {e}")
     
         # 4. Market-Order platzieren (SHORT open)
         order_response = None
-        try
-            logs.append(fPlaziere Market-Order (SHORT) mit {usdt_amount} USDT für {symbol}...)
-            order_response = SHORT_place_market_order(api_key, secret_key, symbol, float(usdt_amount), SHORT)
+        try:
+            logs.append(f"Plaziere Market-Order (SHORT) mit {usdt_amount} USDT für {symbol}...")
+            order_response = SHORT_place_market_order(api_key, secret_key, symbol, float(usdt_amount), "SHORT")
             alarm_counter[botname] = alarm_counter.get(botname, -1) + 1
             logs.append(SHORT_firebase_speichere_ordergroesse(botname, usdt_amount, firebase_secret))
             time.sleep(1.5)
-            logs.append(fMarket-Order Antwort {order_response})
-            if not order_response or order_response.get(code) != 0
-                status_fuer_alle[botname] = Fehler
-                logs.append(Marketorder konnte nicht gesetzt werden.)
-                SHORT_sende_telegram_nachricht(botname, f❌❌❌ Marketorder konnte nicht gesetzt werden für Bot {botname})
-        except Exception as e
-            logs.append(fFehler bei Marketorder {e})
-            status_fuer_alle[botname] = Fehler
-            SHORT_sende_telegram_nachricht(botname, f❌❌❌ Marketorder konnte nicht gesetzt werden für Bot {botname})
+            logs.append(f"Market-Order Antwort: {order_response}")
+            if not order_response or order_response.get("code") != 0:
+                status_fuer_alle[botname] = "Fehler"
+                logs.append("Marketorder konnte nicht gesetzt werden.")
+                SHORT_sende_telegram_nachricht(botname, f"❌❌❌ Marketorder konnte nicht gesetzt werden für Bot: {botname}")
+        except Exception as e:
+            logs.append(f"Fehler bei Marketorder: {e}")
+            status_fuer_alle[botname] = "Fehler"
+            SHORT_sende_telegram_nachricht(botname, f"❌❌❌ Marketorder konnte nicht gesetzt werden für Bot: {botname}")
     
         # 5. Positionsgröße & liq price
-        try
-            sell_quantity, positions_raw, liquidation_price = SHORT_get_current_position(api_key, secret_key, symbol, SHORT, logs)
-            if sell_quantity == 0
-                executed_qty_str = order_response.get(data, {}).get(order, {}).get(executedQty) if order_response else None
-                if executed_qty_str
+        try:
+            sell_quantity, positions_raw, liquidation_price = SHORT_get_current_position(api_key, secret_key, symbol, "SHORT", logs)
+            if sell_quantity == 0:
+                executed_qty_str = order_response.get("data", {}).get("order", {}).get("executedQty") if order_response else None
+                if executed_qty_str:
                     sell_quantity = float(executed_qty_str)
-                    logs.append(f[Market Order] Ausgeführte Menge aus order_response genutzt {sell_quantity})
+                    logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
     
-            if liquidation_price
-                # Stop-Loss ist 3% über Liquidationspreis per Vorgabe (short - SL  entry)
-                stop_loss_price = round(liquidation_price  0.97, 6)
-                logs.append(fStop-Loss-Preis basierend auf Liquidationspreis {liquidation_price} {stop_loss_price})
-            else
+            if liquidation_price:
+                # Stop-Loss ist 3% über Liquidationspreis per Vorgabe (short -> SL > entry)
+                stop_loss_price = round(liquidation_price * 0.97, 6)
+                logs.append(f"Stop-Loss-Preis basierend auf Liquidationspreis {liquidation_price}: {stop_loss_price}")
+            else:
                 stop_loss_price = None
-                logs.append(Liquidationspreis nicht verfügbar.)
-                SHORT_sende_telegram_nachricht(botname, f❌ Liquidationspreis nicht verfügbar für Bot {botname})
-        except Exception as e
+                logs.append("Liquidationspreis nicht verfügbar.")
+                SHORT_sende_telegram_nachricht(botname, f"❌ Liquidationspreis nicht verfügbar für Bot: {botname}")
+        except Exception as e:
             sell_quantity = 0
             stop_loss_price = None
-            logs.append(fFehler bei Positions-Liquidationsabfrage {e})
-            SHORT_sende_telegram_nachricht(botname, f❌ Fehler bei Positions-Liquidationsabfrage {botname} {e})
+            logs.append(f"Fehler bei Positions-/Liquidationsabfrage: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler bei Positions-/Liquidationsabfrage {botname}: {e}")
     
         # 6. Kaufpreise ggf. löschen (bei neuer BO)
-        if firebase_secret and not open_sell_orders_exist
-            try
+        if firebase_secret and not open_sell_orders_exist:
+            try:
                 logs.append(SHORT_firebase_loesche_kaufpreise(botname, firebase_secret))
-            except Exception as e
-                logs.append(fFehler beim Löschen der Kaufpreise {e})
-                status_fuer_alle[botname] = Fehler
+            except Exception as e:
+                logs.append(f"Fehler beim Löschen der Kaufpreise: {e}")
+                status_fuer_alle[botname] = "Fehler"
     
         # 7. Kaufpreis speichern in Firebase (falls vorhanden)
-        if firebase_secret and price_from_webhook
-            try
+        if firebase_secret and price_from_webhook:
+            try:
                 logs.append(SHORT_firebase_speichere_kaufpreis(botname, float(price_from_webhook), float(usdt_amount), firebase_secret))
-            except Exception as e
-                logs.append(fFehler beim Speichern Kaufpreis {e})
-                status_fuer_alle[botname] = Fehler
+            except Exception as e:
+                logs.append(f"Fehler beim Speichern Kaufpreis: {e}")
+                status_fuer_alle[botname] = "Fehler"
     
         # 8. Durchschnittspreis (Firebase oder BingX fallback)
         durchschnittspreis = None
         kaufpreise = []
-        if status_fuer_alle.get(botname) == Fehler
-            logs.append(Status Fehler - Fallback auf BingX avgPrice)
-            try
-                for pos in positions_raw
-                    if pos.get(symbol) == symbol and pos.get(positionSide, ).upper() == SHORT
-                        avg_price = float(pos.get(avgPrice, 0)) or float(pos.get(averagePrice, 0))
-                        if avg_price  0
-                            durchschnittspreis = round(avg_price  (1 - 0.003), 6)
-                            logs.append(f[Fallback] Durchschnittspreis (BingX, adjust) {durchschnittspreis})
-                            SHORT_sende_telegram_nachricht(botname, fℹ️ Durchschnittspreis von BINGX verwendet für Bot {botname})
+        if status_fuer_alle.get(botname) == "Fehler":
+            logs.append("Status Fehler -> Fallback auf BingX avgPrice")
+            try:
+                for pos in positions_raw:
+                    if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
+                        avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                        if avg_price > 0:
+                            durchschnittspreis = round(avg_price * (1 - 0.003), 6)
+                            logs.append(f"[Fallback] Durchschnittspreis (BingX, adjust): {durchschnittspreis}")
+                            SHORT_sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                             break
-            except Exception as e
-                logs.append(f[Fehler] avgPrice-Fallback fehlgeschlagen {e})
-        else
-            try
-                if firebase_secret
+            except Exception as e:
+                logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+        else:
+            try:
+                if firebase_secret:
                     kaufpreise = SHORT_firebase_lese_kaufpreise(botname, firebase_secret)
-                    logs.append(f[Firebase] Kaufpreise {kaufpreise})
+                    logs.append(f"[Firebase] Kaufpreise: {kaufpreise}")
                     durchschnittspreis = SHORT_berechne_durchschnittspreis(kaufpreise or [])
-                    if durchschnittspreis
-                        logs.append(f[Firebase] Durchschnittspreis berechnet {durchschnittspreis})
-                    else
-                        logs.append([Firebase] Keine gültigen Kaufpreise gefunden.)
-                        status_fuer_alle[botname] = Fehler
-            except Exception as e
-                status_fuer_alle[botname] = Fehler
-                logs.append(f[Fehler] Firebase-Zugriff fehlgeschlagen {e})
+                    if durchschnittspreis:
+                        logs.append(f"[Firebase] Durchschnittspreis berechnet: {durchschnittspreis}")
+                    else:
+                        logs.append("[Firebase] Keine gültigen Kaufpreise gefunden.")
+                        status_fuer_alle[botname] = "Fehler"
+            except Exception as e:
+                status_fuer_alle[botname] = "Fehler"
+                logs.append(f"[Fehler] Firebase-Zugriff fehlgeschlagen: {e}")
     
-            if not durchschnittspreis or durchschnittspreis == 0
-                try
-                    for pos in positions_raw
-                        if pos.get(symbol) == symbol and pos.get(positionSide, ).upper() == SHORT
-                            avg_price = float(pos.get(avgPrice, 0)) or float(pos.get(averagePrice, 0))
-                            if avg_price  0
-                                durchschnittspreis = round(avg_price  (1 - 0.002), 6)
-                                logs.append(fFallback avgPrice verwendet {durchschnittspreis})
-                                SHORT_sende_telegram_nachricht(botname, fℹ️ Durchschnittspreis von BINGX verwendet für Bot {botname})
-                                status_fuer_alle[botname] = Fehler
+            if not durchschnittspreis or durchschnittspreis == 0:
+                try:
+                    for pos in positions_raw:
+                        if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
+                            avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
+                            if avg_price > 0:
+                                durchschnittspreis = round(avg_price * (1 - 0.002), 6)
+                                logs.append(f"Fallback avgPrice verwendet: {durchschnittspreis}")
+                                SHORT_sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
+                                status_fuer_alle[botname] = "Fehler"
                                 break
-                except Exception as e
-                    logs.append(f[Fehler] avgPrice-Fallback fehlgeschlagen {e})
-                    SHORT_sende_telegram_nachricht(botname, f❌ Fallback avgPrice fehlgeschlagen für Bot {botname})
+                except Exception as e:
+                    logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
+                    SHORT_sende_telegram_nachricht(botname, f"❌ Fallback avgPrice fehlgeschlagen für Bot: {botname}")
     
-        # 9. Alte TP (BUY LIMIT) Orders löschen (nur BUY LIMIT  STOP_MARKET für positionSide SHORT)
-        try
-            if isinstance(open_orders, dict) and open_orders.get(code) == 0
-                for order in open_orders.get(data, {}).get(orders, [])
+        # 9. Alte TP (BUY LIMIT) Orders löschen (nur BUY LIMIT / STOP_MARKET für positionSide SHORT)
+        try:
+            if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+                for order in open_orders.get("data", {}).get("orders", []):
                     # Stop Market oder BUY LIMIT für SHORT löschen (um neu zu setzen)
-                    if order.get(positionSide) == SHORT and (order.get(type) == STOP_MARKET or (order.get(type) == LIMIT and order.get(side) == BUY))
-                        cancel_resp = SHORT_cancel_order(api_key, secret_key, symbol, str(order.get(orderId)))
-                        logs.append(fGelöschte Order {order.get('orderId')} {cancel_resp})
-        except Exception as e
-            logs.append(fFehler beim Löschen alter Orders {e})
-            SHORT_sende_telegram_nachricht(botname, fFehler beim Löschen alter Orders {botname} {e})
+                    if order.get("positionSide") == "SHORT" and (order.get("type") == "STOP_MARKET" or (order.get("type") == "LIMIT" and order.get("side") == "BUY")):
+                        cancel_resp = SHORT_cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                        logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_resp}")
+        except Exception as e:
+            logs.append(f"Fehler beim Löschen alter Orders: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"Fehler beim Löschen alter Orders {botname}: {e}")
     
         # Base Order Zeit speichern, falls neue BO
-        if not open_sell_orders_exist
+        if not open_sell_orders_exist:
             now = datetime.now(timezone.utc)
             base_order_times[botname] = now
-            logs.append(fBase-Order Zeitpunkt gespeichert {now})
-            try
+            logs.append(f"Base-Order Zeitpunkt gespeichert: {now}")
+            try:
                 logs.append(SHORT_firebase_speichere_base_order_time(botname, now, firebase_secret))
-            except Exception as e
-                logs.append(fFehler beim Speichern base_order_time in Firebase {e})
+            except Exception as e:
+                logs.append(f"Fehler beim Speichern base_order_time in Firebase: {e}")
     
-        else
-            # Falls Folgeorders LoadCheck base_time
-            if not base_time2
+        else:
+            # Falls Folgeorders: Load/Check base_time
+            if not base_time2:
                 base_time = base_order_times.get(botname)
-            else
-                try
+            else:
+                try:
                     base_time = datetime.fromisoformat(base_time2)
-                    if base_time.tzinfo is None
+                    if base_time.tzinfo is None:
                         base_time = base_time.replace(tzinfo=timezone.utc)
-                except Exception
+                except Exception:
                     base_time = None
-            if base_time is None and firebase_secret
-                try
+            if base_time is None and firebase_secret:
+                try:
                     base_time_str = None
                     # read from firebase
-                    url = f{FIREBASE_URL}base_order_time{botname}.jsonauth={firebase_secret}
+                    url = f"{FIREBASE_URL}/base_order_time/{botname}.json?auth={firebase_secret}"
                     r = requests.get(url)
-                    if r.status_code == 200 and r.text
+                    if r.status_code == 200 and r.text:
                         d = r.json()
-                        base_time_str = d.get(base_order_time) if isinstance(d, dict) else None
-                    if base_time_str
+                        base_time_str = d.get("base_order_time") if isinstance(d, dict) else None
+                    if base_time_str:
                         base_time = datetime.fromisoformat(base_time_str)
-                        if base_time.tzinfo is None
+                        if base_time.tzinfo is None:
                             base_time = base_time.replace(tzinfo=timezone.utc)
                         base_order_times[botname] = base_time
-                        logs.append(fBase-Order Zeitpunkt aus Firebase geladen {base_time})
-                except Exception as e
-                    logs.append(fFehler beim Laden base_time aus Firebase {e})
-            # prüfen after_h  after_so & ggf sell_percentage anpassen
-            alarm_trigger = int(data.get(RENDER, {}).get(alarm, 0))
-            if status_fuer_alle.get(botname) == Fehler
+                        logs.append(f"Base-Order Zeitpunkt aus Firebase geladen: {base_time}")
+                except Exception as e:
+                    logs.append(f"Fehler beim Laden base_time aus Firebase: {e}")
+            # prüfen after_h / after_so & ggf sell_percentage anpassen
+            alarm_trigger = int(data.get("RENDER", {}).get("alarm", 0))
+            if status_fuer_alle.get(botname) == "Fehler":
                 anzahl_nachkäufe = alarm_counter.get(botname, -1)
-            else
+            else:
                 anzahl_käufe = len(kaufpreise or [])
                 anzahl_nachkäufe = max(anzahl_käufe - 1, 0)
-            if base_time is not None
+            if base_time is not None:
                 delta = datetime.now(timezone.utc) - base_time
-                if delta.total_seconds() = int(after_h)  3600 or anzahl_nachkäufe = int(after_so)
+                if delta.total_seconds() >= int(after_h) * 3600 or anzahl_nachkäufe >= int(after_so):
                     sell_percentage = sell_percentage2
-                    logs.append(Zeit oder Nachkaufgrenze überschritten - sell_percentage reduziert (sell_percentage2 verwendet).)
+                    logs.append("Zeit oder Nachkaufgrenze überschritten -> sell_percentage reduziert (sell_percentage2 verwendet).")
     
         # 10. Take-Profit (TP) und Stop-Loss (SL) setzen (SHORT)
         limit_order_response = None
-        try
-            position_size_now, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, SHORT, logs)
+        try:
+            position_size_now, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, "SHORT", logs)
             sell_quantity = min(sell_quantity if 'sell_quantity' in locals() else 0, position_size_now)
-            # Für Short average (durchschnittspreis) sollte  0
-            if durchschnittspreis and sell_percentage
-                # sell_percentage for short means how much abovebelow In your earlier code sell was for LONG.
-                # For SHORT TP should be under the avg price = TP_price = avg  (1 - sell_percentage100)
-                limit_price = round(float(durchschnittspreis)  (1 - float(sell_percentage)  100), 6)
-            elif durchschnittspreis and sell_percentage is None
-                # fallback if sell_percentage not set small profit target
-                limit_price = round(float(durchschnittspreis)  0.99, 6)
-            else
+            # Für Short: average (durchschnittspreis) sollte > 0
+            if durchschnittspreis and sell_percentage:
+                # sell_percentage for short means how much above/below? In your earlier code sell was for LONG.
+                # For SHORT TP should be under the avg price => TP_price = avg * (1 - sell_percentage/100)
+                limit_price = round(float(durchschnittspreis) * (1 - float(sell_percentage) / 100), 6)
+            elif durchschnittspreis and sell_percentage is None:
+                # fallback if sell_percentage not set: small profit target
+                limit_price = round(float(durchschnittspreis) * 0.99, 6)
+            else:
                 limit_price = 0
     
-            if sell_quantity  0 and limit_price  0
-                limit_order_response = SHORT_place_limit_buy_order(api_key, secret_key, symbol, sell_quantity, limit_price, SHORT)
-                logs.append(fTP Limit(BUY) Order gesetzt @ {limit_price} {limit_order_response})
+            if sell_quantity > 0 and limit_price > 0:
+                limit_order_response = SHORT_place_limit_buy_order(api_key, secret_key, symbol, sell_quantity, limit_price, "SHORT")
+                logs.append(f"TP Limit(BUY) Order gesetzt @ {limit_price}: {limit_order_response}")
                 # Prüfen ob Limit erfolgreich erstellt
-                if limit_order_response.get(code) != 0 or limit_order_response.get(data, {}).get(order, {}).get(status) not in (None, NEW,) 
+                if limit_order_response.get("code") != 0 or limit_order_response.get("data", {}).get("order", {}).get("status") not in (None, "NEW",): 
                     # Abhängig von API kann die Struktur variieren; wir prüfen code != 0 als Fehler
-                    logs.append(TP Limit-Order möglicherweise nicht erfolgreich gesetzt.)
-                    SHORT_sende_telegram_nachricht(botname, f⚠️ TP Limit-Order konnte nicht gesetzt werden!nSymbol {symbol}nResponse {limit_order_response})
-            else
-                logs.append(Ungültige Daten für TP (kein limit_price oder sell_quantity=0).)
-        except Exception as e
-            logs.append(fFehler bei TP Limit-Order {e})
-            SHORT_sende_telegram_nachricht(botname, f❌ Fehler bei TP Limit-Order für Bot {botname})
+                    logs.append("TP Limit-Order möglicherweise nicht erfolgreich gesetzt.")
+                    SHORT_sende_telegram_nachricht(botname, f"⚠️ TP Limit-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {limit_order_response}")
+            else:
+                logs.append("Ungültige Daten für TP (kein limit_price oder sell_quantity=0).")
+        except Exception as e:
+            logs.append(f"Fehler bei TP Limit-Order: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler bei TP Limit-Order für Bot: {botname}")
     
-        # Stop Loss BUY STOP_MARKET über entry
+        # Stop Loss: BUY STOP_MARKET über entry
         sl_order_resp = None
-        try
-            if sell_quantity  0 and stop_loss_price
-                sl_order_resp = SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, SHORT)
-                logs.append(fSL Stop-Market(BUY) Order gesetzt @ {stop_loss_price} {sl_order_resp})
-                if sl_order_resp.get(code) != 0 or sl_order_resp.get(data, {}).get(order, {}).get(status) not in (None, NEW,)
-                    logs.append(SL Stop-Market konnte nicht gesetzt werden.)
-                    SHORT_sende_telegram_nachricht(botname, f⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!nSymbol {symbol}nResponse {sl_order_resp})
-            else
-                logs.append(Keine SL gesetzt – fehlende Parameter (sell_quantity oder stop_loss_price).)
-                SHORT_sende_telegram_nachricht(botname, f⚠️ Keine SL gesetzt (fehlende Daten) für Bot {botname})
-        except Exception as e
-            logs.append(fFehler beim Setzen der SL-Order {e})
-            SHORT_sende_telegram_nachricht(botname, f❌ Fehler beim Setzen der SL für Bot {botname} {e})
+        try:
+            if sell_quantity > 0 and stop_loss_price:
+                sl_order_resp = SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "SHORT")
+                logs.append(f"SL Stop-Market(BUY) Order gesetzt @ {stop_loss_price}: {sl_order_resp}")
+                if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") not in (None, "NEW",):
+                    logs.append("SL Stop-Market konnte nicht gesetzt werden.")
+                    SHORT_sende_telegram_nachricht(botname, f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}")
+            else:
+                logs.append("Keine SL gesetzt – fehlende Parameter (sell_quantity oder stop_loss_price).")
+                SHORT_sende_telegram_nachricht(botname, f"⚠️ Keine SL gesetzt (fehlende Daten) für Bot: {botname}")
+        except Exception as e:
+            logs.append(f"Fehler beim Setzen der SL-Order: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen der SL für Bot: {botname}: {e}")
     
-        # Wenn TP oder SL nicht gesetzt wurden - Position schließen & Telegram
-        tp_ok = (limit_order_response and limit_order_response.get(code) == 0) or (limit_order_response is None and limit_price == 0)
-        sl_ok = (sl_order_resp and sl_order_resp.get(code) == 0) or (stop_loss_price is None)
-        # Defensive check wenn neither properly set and we have a position - close & notify
-        if sell_quantity  0 and (not tp_ok or not sl_ok)
-            SHORT_sende_telegram_nachricht(botname, f⚠️ TP oder SL konnte(n) nicht gesetzt werden. Schließe Position sofort! Symbol {symbol})
+        # Wenn TP oder SL nicht gesetzt wurden -> Position schließen & Telegram
+        tp_ok = (limit_order_response and limit_order_response.get("code") == 0) or (limit_order_response is None and limit_price == 0)
+        sl_ok = (sl_order_resp and sl_order_resp.get("code") == 0) or (stop_loss_price is None)
+        # Defensive check: wenn neither properly set and we have a position -> close & notify
+        if sell_quantity > 0 and (not tp_ok or not sl_ok):
+            SHORT_sende_telegram_nachricht(botname, f"⚠️ TP oder SL konnte(n) nicht gesetzt werden. Schließe Position sofort! Symbol: {symbol}")
             close_resp = SHORT_close_all_positions(api_key, secret_key)
-            logs.append(fPositionen geschlossen weil TPSL nicht gesetzt {close_resp})
+            logs.append(f"Positionen geschlossen weil TP/SL nicht gesetzt: {close_resp}")
             return jsonify({
-                error True,
-                msg TPSL konnte nicht gesetzt werden. Position wurde geschlossen.,
-                logs logs
+                "error": True,
+                "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+                "logs": logs
             }), 500
     
         # final response
         return jsonify({
-            error False,
-            order_result order_response,
-            limit_order_result limit_order_response,
-            sl_order_result sl_order_resp,
-            symbol symbol,
-            botname botname,
-            usdt_amount usdt_amount,
-            sell_quantity sell_quantity if 'sell_quantity' in locals() else 0,
-            price_from_webhook price_from_webhook,
-            sell_percentage sell_percentage,
-            firebase_average_price durchschnittspreis,
-            firebase_all_prices kaufpreise,
-            usdt_balance_before_order available_usdt,
-            stop_loss_price stop_loss_price if 'stop_loss_price' in locals() else None,
-            saved_usdt_amount saved_usdt_amounts.get(botname),
-            status_fuer_alle status_fuer_alle.get(botname),
-            Botname botname,
-            logs logs
+            "error": False,
+            "order_result": order_response,
+            "limit_order_result": limit_order_response,
+            "sl_order_result": sl_order_resp,
+            "symbol": symbol,
+            "botname": botname,
+            "usdt_amount": usdt_amount,
+            "sell_quantity": sell_quantity if 'sell_quantity' in locals() else 0,
+            "price_from_webhook": price_from_webhook,
+            "sell_percentage": sell_percentage,
+            "firebase_average_price": durchschnittspreis,
+            "firebase_all_prices": kaufpreise,
+            "usdt_balance_before_order": available_usdt,
+            "stop_loss_price": stop_loss_price if 'stop_loss_price' in locals() else None,
+            "saved_usdt_amount": saved_usdt_amounts.get(botname),
+            "status_fuer_alle": status_fuer_alle.get(botname),
+            "Botname": botname,
+            "logs": logs
         })
 
+
+
+        
 if __name__ == __main__
     # Achtung debug=True in Produktion ausschalten
     app.run(debug=True, host=0.0.0.0, port=5000)
