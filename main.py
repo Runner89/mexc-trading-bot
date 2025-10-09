@@ -1,5 +1,5 @@
-#nicht vyn
-DCA nur für LONG
+
+#DCA nur für LONG
 
 #Es wird zu Beginn geprüft, ob eine offene Long Position besteht. Falls ja, wird nichts gemacht.
 #Market Order mit Hebel wird gesetzt
