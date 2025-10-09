@@ -1257,12 +1257,12 @@ def webhook():
         # ------------------------------
         try:
             long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, LONG, logs)
-            logs.append(fLong Position Size {long_position_size})
+            logs.append(f"Long Position Size {long_position_size}")
             if long_position_size and long_position_size  0
-                logs.append(Offene LONG-Position vorhanden - keine Aktion ausgeführt.)
+                logs.append(f"Offene LONG-Position vorhanden - keine Aktion ausgeführt.")
                 return jsonify({status long_position_exists, botname botname, logs logs})
         except Exception as e
-            logs.append(fFehler bei LONG-Positionsprüfung {e})
+            logs.append(f"Fehler bei LONG-Positionsprüfung {e}")
             return jsonify({error True, msg Fehler bei LONG-Positionsprüfung, logs logs}), 500
     
     
