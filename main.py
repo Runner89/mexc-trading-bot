@@ -1,6 +1,7 @@
 
 ####  nur fuer DCA SHORT  ####
 
+#Es wird zu Beginn geprüft, ob eine offene Long Position besteht. Falls ja, wird nichts gemacht.
 #Market Order mit Hebel wird gesetzt
 #Hebel muss in BINGX selber vorher eingestellt werden
 #Preis, welcher im JSON übergeben wurde, wird in Firebase gespeichert
@@ -15,7 +16,7 @@
 #Wenn action=close ist, wird Position geschlossen
 #Wenn action nicht gefunden wird, ist es die Baseorder
 #vyn Alarm kann benutzt werden (inkl. close-Signal) und dann folgende Alarmnachricht
-#Wenn Position auf BINGX schon gelöscht wurde und bei Traidingview noch nicht, wird der nächste increase-Befehl als Base Order ausgeführt
+#Wenn Position auf BINGX schon gelöscht wurde und bei Traidingview noch nicht, wird der nächste increase-Befehl ignoriert
 #Nach x Stunden seit BO oder nach x SO wird die Sell-Limit-Order auf x % gesetzt
 
 #https://......../webhook
