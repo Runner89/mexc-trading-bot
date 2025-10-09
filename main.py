@@ -472,7 +472,7 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 def SHORT_generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
 
-def SHORT_send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
+def SHORT_send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
     if params is None
         params = {}
     timestamp = int(time.time()  1000)
@@ -496,7 +496,7 @@ def SHORT_send_signed_request(http_method, endpoint, api_key, secret_key, params
     except Exception
         return {code -1, msg Ungültige API-Antwort, raw response.text}
 
-def SHORT_get_futures_balance(api_key str, secret_key str)
+def SHORT_get_futures_balance(api_key str, secret_key str):
     timestamp = int(time.time()  1000)
     params = ftimestamp={timestamp}
     signature = generate_signature(secret_key, params)
@@ -508,7 +508,7 @@ def SHORT_get_futures_balance(api_key str, secret_key str)
     except Exception
         return {code -1, msg Ungültige Balance-Antwort, raw resp.text}
 
-def SHORT_get_current_price(symbol str)
+def SHORT_get_current_price(symbol str):
     url = f{BASE_URL}{PRICE_ENDPOINT}symbol={symbol}
     resp = requests.get(url)
     try
@@ -520,7 +520,7 @@ def SHORT_get_current_price(symbol str)
     return None
 
 # === Firebase helper functions (kopiert  angepasst) ===
-def SHORT_firebase_speichere_base_order_time(botname, timestamp, firebase_secret)
+def SHORT_firebase_speichere_base_order_time(botname, timestamp, firebase_secret):
     try
         url = f{FIREBASE_URL}base_order_time{botname}.jsonauth={firebase_secret}
         data = {base_order_time timestamp.isoformat()}
@@ -529,7 +529,7 @@ def SHORT_firebase_speichere_base_order_time(botname, timestamp, firebase_secret
     except Exception as e
         return fFehler beim Speichern der Base-Order-Zeit {e}
 
-def SHORT_firebase_loesche_base_order_time(botname, firebase_secret)
+def SHORT_firebase_loesche_base_order_time(botname, firebase_secret):
     try
         url = f{FIREBASE_URL}base_order_time{botname}.jsonauth={firebase_secret}
         r = requests.delete(url)
@@ -537,7 +537,7 @@ def SHORT_firebase_loesche_base_order_time(botname, firebase_secret)
     except Exception as e
         return fFehler beim Löschen base_order_time {e}
 
-def SHORT_firebase_speichere_ordergroesse(botname, betrag, firebase_secret)
+def SHORT_firebase_speichere_ordergroesse(botname, betrag, firebase_secret):
     try
         url = f{FIREBASE_URL}ordergroesse{botname}.jsonauth={firebase_secret}
         data = {usdt_amount betrag}
@@ -546,7 +546,7 @@ def SHORT_firebase_speichere_ordergroesse(botname, betrag, firebase_secret)
     except Exception as e
         return fFehler beim Speichern ordergroesse {e}
 
-def SHORT_firebase_lese_ordergroesse(botname, firebase_secret)
+def SHORT_firebase_lese_ordergroesse(botname, firebase_secret):
     try
         url = f{FIREBASE_URL}ordergroesse{botname}.jsonauth={firebase_secret}
         r = requests.get(url)
@@ -561,7 +561,7 @@ def SHORT_firebase_lese_ordergroesse(botname, firebase_secret)
         pass
     return None
 
-def SHORT_firebase_speichere_kaufpreis(botname, price, usdt_amount, firebase_secret)
+def SHORT_firebase_speichere_kaufpreis(botname, price, usdt_amount, firebase_secret):
     try
         url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
         data = {price price, usdt_amount usdt_amount}
@@ -573,7 +573,7 @@ def SHORT_firebase_speichere_kaufpreis(botname, price, usdt_amount, firebase_sec
     except Exception as e
         return fFehler beim Speichern Kaufpreis {e}
 
-def SHORT_firebase_loesche_kaufpreise(botname, firebase_secret)
+def SHORT_firebase_loesche_kaufpreise(botname, firebase_secret):
     try
         url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
         r = requests.delete(url)
@@ -583,7 +583,7 @@ def SHORT_firebase_loesche_kaufpreise(botname, firebase_secret)
     except Exception as e
         return fFehler beim Löschen Kaufpreise {e}
 
-def SHORT_firebase_lese_kaufpreise(botname, firebase_secret)
+def SHORT_firebase_lese_kaufpreise(botname, firebase_secret):
     try
         url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
         r = requests.get(url)
@@ -596,7 +596,7 @@ def SHORT_firebase_lese_kaufpreise(botname, firebase_secret)
     except Exception
         return []
 
-def SHORT_berechne_durchschnittspreis(käufe)
+def SHORT_berechne_durchschnittspreis(käufe):
     if not käufe
         return None
     gesamtwert = 0.0
@@ -611,7 +611,7 @@ def SHORT_berechne_durchschnittspreis(käufe)
     return round(gesamtwert  gesamtmenge, 6)
 
 # === Telegram ===
-def SHORT_sende_telegram_nachricht(botname, text)
+def SHORT_sende_telegram_nachricht(botname, text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID
         return Telegram nicht konfiguriert
     full_text = f[{botname}] {text}
@@ -624,7 +624,7 @@ def SHORT_sende_telegram_nachricht(botname, text)
         return fTelegram Fehler {e}
 
 # === Order-Funktionen (SHORT-optimiert) ===
-def SHORT_set_leverage(api_key, secret_key, symbol, leverage, position_side=SHORT)
+def SHORT_set_leverage(api_key, secret_key, symbol, leverage, position_side=SHORT):
     # position_side must be SHORT here; map side accordingly
     endpoint = openApiswapv2tradeleverage
     side_map = {LONG BUY, SHORT SELL}
@@ -636,7 +636,7 @@ def SHORT_set_leverage(api_key, secret_key, symbol, leverage, position_side=SHOR
     }
     return send_signed_request(POST, endpoint, api_key, secret_key, params)
 
-def SHORT_place_market_order(api_key, secret_key, symbol, usdt_amount, position_side=SHORT)
+def SHORT_place_market_order(api_key, secret_key, symbol, usdt_amount, position_side=SHORT):
     
     Platzieren einer Market-Order zum ÖFFNEN einer SHORT-Position.
     Für SHORT side=SELL
@@ -664,7 +664,7 @@ def SHORT_place_market_order(api_key, secret_key, symbol, usdt_amount, position_
     except Exception
         return {code -1, msg Ungültige API-Antwort, raw resp.text}
 
-def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, position_side=SHORT)
+def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, position_side=SHORT):
     
     Schließt eine Position via MARKET (für SHORT - BUY)
     position_amt Menge (positiv)
@@ -689,7 +689,7 @@ def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, po
     except Exception
         return {code -1, msg Ungültige API-Antwort, raw resp.text}
 
-def SHORT_place_limit_buy_order(api_key, secret_key, symbol, quantity, limit_price, position_side=SHORT)
+def SHORT_place_limit_buy_order(api_key, secret_key, symbol, quantity, limit_price, position_side=SHORT):
     
     TP für SHORT BUY Limit (unter Entry).
     
@@ -714,7 +714,7 @@ def SHORT_place_limit_buy_order(api_key, secret_key, symbol, quantity, limit_pri
     except Exception
         return {code -1, msg Ungültige API-Antwort, raw resp.text}
 
-def SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, quantity, stop_price, position_side=SHORT)
+def SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, quantity, stop_price, position_side=SHORT):
     
     SL für SHORT BUY STOP_MARKET (über Entry) zum Schließen
     
@@ -738,7 +738,7 @@ def SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, quantity, stop_p
     except Exception
         return {code -1, msg Ungültige API-Antwort, raw resp.text}
 
-def SHORT_get_open_orders(api_key, secret_key, symbol)
+def SHORT_get_open_orders(api_key, secret_key, symbol):
     timestamp = int(time.time()  1000)
     params = fsymbol={symbol}&timestamp={timestamp}
     signature = generate_signature(secret_key, params)
@@ -750,7 +750,7 @@ def SHORT_get_open_orders(api_key, secret_key, symbol)
     except Exception
         return {code -1, msg Ungültige Antwort Open Orders, raw r.text}
 
-def SHORT_cancel_order(api_key, secret_key, symbol, order_id)
+def SHORT_cancel_order(api_key, secret_key, symbol, order_id):
     timestamp = int(time.time()  1000)
     params = fsymbol={symbol}&orderId={order_id}&timestamp={timestamp}
     signature = generate_signature(secret_key, params)
@@ -763,7 +763,7 @@ def SHORT_cancel_order(api_key, secret_key, symbol, order_id)
         return {code -1, msg Ungültige Antwort Cancel, raw r.text}
 
 # === Positionsabfrage ===
-def SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=None)
+def SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = openApiswapv2userpositions
     params = {symbol symbol}
     response = send_signed_request(GET, endpoint, api_key, secret_key, params)
@@ -792,7 +792,7 @@ def SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=
     return position_size, raw_positions, liquidation_price
 
 # === Schließen aller Positionen (nur SHORT relevant) ===
-def SHORT_close_all_positions(api_key, secret_key)
+def SHORT_close_all_positions(api_key, secret_key):
     logs = []
     closed_positions = []
     positions_resp = get_open_positions_for_all_symbols(api_key, secret_key)
@@ -826,8 +826,9 @@ def SHORT_close_all_positions(api_key, secret_key)
             sende_telegram_nachricht(BingX Bot, message)
             logs.append(message)
     return {error False, closed closed_positions, logs logs}
+            
 
-def SHORT_get_open_positions_for_all_symbols(api_key, secret_key)
+def SHORT_get_open_positions_for_all_symbols(api_key, secret_key):
     endpoint = openApiswapv2userpositions
     response = send_signed_request(GET, endpoint, api_key, secret_key, {})
     if response.get(code) != 0
@@ -836,7 +837,7 @@ def SHORT_get_open_positions_for_all_symbols(api_key, secret_key)
     return {error False, data positions}
 
 # === Close helper für webhook 'close' action ===
-def SHORT_close_open_position(api_key, secret_key, symbol, position_side=SHORT)
+def SHORT_close_open_position(api_key, secret_key, symbol, position_side=SHORT):
     logs = []
     position_size, _, liquidation_price = get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
     if position_size == 0
