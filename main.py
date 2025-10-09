@@ -822,7 +822,7 @@ def SHORT_close_all_positions(api_key, secret_key)
                 response resp
             })
         except Exception as e
-            message = f⚠️ Fehler beim Schließen von {symbol} {position_side} {e}
+            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side} {e}
             sende_telegram_nachricht(BingX Bot, message)
             logs.append(message)
     return {error False, closed closed_positions, logs logs}
