@@ -1255,7 +1255,7 @@ def webhook():
     
             # Check Offene LONG-Position
         # ------------------------------
-        try
+        try:
             long_position_size, _, _ = SHORT_get_current_position(api_key, secret_key, symbol, LONG, logs)
             logs.append(fLong Position Size {long_position_size})
             if long_position_size and long_position_size  0
