@@ -469,401 +469,211 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 
 ### SHORT Funktionen
 # === Hilfsfunktionen ===
+# === SHORT Hilfsfunktionen ===
 def SHORT_generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
 
-def SHORT_send_signed_request(http_method, endpoint, api_key, secret_key, params=None):
-    if params is None
+
+def SHORT_send_signed_request(http_method: str, endpoint: str, api_key: str, secret_key: str, params: dict = None):
+    if params is None:
         params = {}
-    timestamp = int(time.time()  1000)
+    timestamp = int(time.time() * 1000)
     params['timestamp'] = timestamp
-    # create canonical query string by sorting keys
-    query_string = &.join(f{k}={params[k]} for k in sorted(params))
+
+    # create canonical query string
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
     signature = hmac.new(secret_key.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     params['signature'] = signature
-    url = f{BASE_URL}{endpoint}
-    headers = {X-BX-APIKEY api_key}
-    if http_method == GET
+
+    url = f"{BASE_URL}{endpoint}"
+    headers = {"X-BX-APIKEY": api_key}
+
+    if http_method.upper() == "GET":
         response = requests.get(url, headers=headers, params=params)
-    elif http_method == POST
+    elif http_method.upper() == "POST":
         response = requests.post(url, headers=headers, json=params)
-    elif http_method == DELETE
+    elif http_method.upper() == "DELETE":
         response = requests.delete(url, headers=headers, params=params)
-    else
-        raise ValueError(Unsupported HTTP method)
-    try
+    else:
+        raise ValueError(f"Unsupported HTTP method: {http_method}")
+
+    try:
         return response.json()
-    except Exception
-        return {code -1, msg Ungültige API-Antwort, raw response.text}
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw_response": response.text}
 
-def SHORT_get_futures_balance(api_key str, secret_key str):
-    timestamp = int(time.time()  1000)
-    params = ftimestamp={timestamp}
-    signature = generate_signature(secret_key, params)
-    url = f{BASE_URL}{BALANCE_ENDPOINT}{params}&signature={signature}
-    headers = {X-BX-APIKEY api_key}
-    resp = requests.get(url, headers=headers)
-    try
-        return resp.json()
-    except Exception
-        return {code -1, msg Ungültige Balance-Antwort, raw resp.text}
 
-def SHORT_get_current_price(symbol str):
-    url = f{BASE_URL}{PRICE_ENDPOINT}symbol={symbol}
-    resp = requests.get(url)
-    try
-        data = resp.json()
-        if data.get(code) == 0 and data in data and price in data[data]
-            return float(data[data][price])
-    except Exception
-        pass
-    return None
-
-# === Firebase helper functions (kopiert  angepasst) ===
-def SHORT_firebase_speichere_base_order_time(botname, timestamp, firebase_secret):
-    try
-        url = f{FIREBASE_URL}base_order_time{botname}.jsonauth={firebase_secret}
-        data = {base_order_time timestamp.isoformat()}
-        response = requests.put(url, json=data)
-        return fBase-Order-Zeit für {botname} gespeichert {timestamp}, Status {response.status_code}
-    except Exception as e
-        return fFehler beim Speichern der Base-Order-Zeit {e}
-
-def SHORT_firebase_loesche_base_order_time(botname, firebase_secret):
-    try
-        url = f{FIREBASE_URL}base_order_time{botname}.jsonauth={firebase_secret}
-        r = requests.delete(url)
-        return fBase-Order-Zeitpunkt für {botname} gelöscht, Status {r.status_code}
-    except Exception as e
-        return fFehler beim Löschen base_order_time {e}
-
-def SHORT_firebase_speichere_ordergroesse(botname, betrag, firebase_secret):
-    try
-        url = f{FIREBASE_URL}ordergroesse{botname}.jsonauth={firebase_secret}
-        data = {usdt_amount betrag}
-        r = requests.put(url, json=data)
-        return fOrdergröße für {botname} gespeichert {betrag}, Status {r.status_code}
-    except Exception as e
-        return fFehler beim Speichern ordergroesse {e}
-
-def SHORT_firebase_lese_ordergroesse(botname, firebase_secret):
-    try
-        url = f{FIREBASE_URL}ordergroesse{botname}.jsonauth={firebase_secret}
-        r = requests.get(url)
-        if r.status_code != 200
-            return None
-        data = r.json()
-        if isinstance(data, dict) and usdt_amount in data
-            return float(data[usdt_amount])
-        elif isinstance(data, (int, float))
-            return float(data)
-    except Exception
-        pass
-    return None
-
-def SHORT_firebase_speichere_kaufpreis(botname, price, usdt_amount, firebase_secret):
-    try
-        url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
-        data = {price price, usdt_amount usdt_amount}
-        r = requests.post(url, json=data)
-        if r.status_code == 200
-            return fKaufpreis für {botname} erfolgreich gespeichert.
-        else
-            return fFehler beim Speichern Kaufpreis {r.status_code} {r.text}
-    except Exception as e
-        return fFehler beim Speichern Kaufpreis {e}
-
-def SHORT_firebase_loesche_kaufpreise(botname, firebase_secret):
-    try
-        url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
-        r = requests.delete(url)
-        if r.status_code == 200
-            return fKaufpreise für {botname} gelöscht.
-        return fFehler beim Löschen Kaufpreise Status {r.status_code}
-    except Exception as e
-        return fFehler beim Löschen Kaufpreise {e}
-
-def SHORT_firebase_lese_kaufpreise(botname, firebase_secret):
-    try
-        url = f{FIREBASE_URL}kaufpreise{botname}.jsonauth={firebase_secret}
-        r = requests.get(url)
-        if r.status_code != 200
-            return []
-        daten = r.json()
-        if not daten
-            return []
-        return [{price float(v.get(price, 0)), usdt_amount float(v.get(usdt_amount, 0))} for v in daten.values()]
-    except Exception
-        return []
-
-def SHORT_berechne_durchschnittspreis(käufe):
-    if not käufe
-        return None
-    gesamtwert = 0.0
-    gesamtmenge = 0.0
-    for kauf in käufe
-        preis = float(kauf.get(price, 0))
-        menge = float(kauf.get(usdt_amount, 0))
-        gesamtwert += preis  menge
-        gesamtmenge += menge
-    if gesamtmenge == 0
-        return None
-    return round(gesamtwert  gesamtmenge, 6)
-
-# === Telegram ===
-def SHORT_sende_telegram_nachricht(botname, text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID
-        return Telegram nicht konfiguriert
-    full_text = f[{botname}] {text}
-    url = fhttpsapi.telegram.orgbot{TELEGRAM_TOKEN}sendMessage
-    payload = {chat_id TELEGRAM_CHAT_ID, text full_text}
-    try
-        r = requests.post(url, json=payload, timeout=10)
-        return fTelegram Antwort {r.status_code}
-    except Exception as e
-        return fTelegram Fehler {e}
-
-# === Order-Funktionen (SHORT-optimiert) ===
-def SHORT_set_leverage(api_key, secret_key, symbol, leverage, position_side=SHORT):
-    # position_side must be SHORT here; map side accordingly
-    endpoint = openApiswapv2tradeleverage
-    side_map = {LONG BUY, SHORT SELL}
-    params = {
-        symbol symbol,
-        leverage int(leverage),
-        positionSide position_side.upper(),
-        side side_map.get(position_side.upper())
-    }
-    return send_signed_request(POST, endpoint, api_key, secret_key, params)
-
-def SHORT_place_market_order(api_key, secret_key, symbol, usdt_amount, position_side=SHORT):
-    
-    Platzieren einer Market-Order zum ÖFFNEN einer SHORT-Position.
-    Für SHORT side=SELL
-    
+# === SHORT Order-Funktionen ===
+def SHORT_place_market_order(api_key, secret_key, symbol, usdt_amount, position_side="SHORT"):
     price = get_current_price(symbol)
-    if price is None
-        return {code 99999, msg Failed to get current price}
-    quantity = round(float(usdt_amount)  price, 6)
-    timestamp = int(time.time()  1000)
-    params_dict = {
-        symbol symbol,
-        side SELL,  # SHORT eröffnen
-        type MARKET,
-        quantity quantity,
-        positionSide position_side.upper(),
-        timestamp timestamp
-    }
-    query_string = &.join(f{k}={params_dict[k]} for k in sorted(params_dict))
-    params_dict[signature] = generate_signature(secret_key, query_string)
-    url = f{BASE_URL}{ORDER_ENDPOINT}
-    headers = {X-BX-APIKEY api_key, Content-Type applicationjson}
-    resp = requests.post(url, headers=headers, json=params_dict)
-    try
-        return resp.json()
-    except Exception
-        return {code -1, msg Ungültige API-Antwort, raw resp.text}
+    if price is None:
+        return {"code": 99999, "msg": "Failed to get current price"}
 
-def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, position_side=SHORT):
-    
-    Schließt eine Position via MARKET (für SHORT - BUY)
-    position_amt Menge (positiv)
-    
-    side = BUY  # Short schließen = buy
-    timestamp = int(time.time()  1000)
+    quantity = round(float(usdt_amount) / price, 6)
+    timestamp = int(time.time() * 1000)
+
+    params_dict = {
+        "symbol": symbol,
+        "side": "SELL",  # SHORT eröffnen
+        "type": "MARKET",
+        "quantity": quantity,
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
+    }
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = SHORT_generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+
+    resp = requests.post(url, headers=headers, json=params_dict)
+    try:
+        return resp.json()
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw_response": resp.text}
+
+
+def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, position_side="SHORT"):
+    side = "BUY"  # Short schließen
+    timestamp = int(time.time() * 1000)
+
     params = {
-        symbol symbol,
-        side side,
-        type MARKET,
-        quantity round(abs(position_amt), 6),
-        positionSide position_side.upper(),
-        timestamp timestamp
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": round(abs(position_amt), 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
     }
-    query_string = &.join(f{k}={params[k]} for k in sorted(params))
-    params[signature] = generate_signature(secret_key, query_string)
-    url = f{BASE_URL}{ORDER_ENDPOINT}
-    headers = {X-BX-APIKEY api_key, Content-Type applicationjson}
+
+    query_string = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    params["signature"] = SHORT_generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+
     resp = requests.post(url, headers=headers, json=params)
-    try
+    try:
         return resp.json()
-    except Exception
-        return {code -1, msg Ungültige API-Antwort, raw resp.text}
+    except Exception:
+        return {"code": -1, "msg": "Ungültige API-Antwort", "raw_response": resp.text}
 
-def SHORT_place_limit_buy_order(api_key, secret_key, symbol, quantity, limit_price, position_side=SHORT):
-    
-    TP für SHORT BUY Limit (unter Entry).
-    
-    timestamp = int(time.time()  1000)
-    params_dict = {
-        symbol symbol,
-        side BUY,        # um Short zu schließen - BUY
-        type LIMIT,
-        quantity round(quantity, 6),
-        price round(limit_price, 6),
-        timeInForce GTC,
-        positionSide position_side.upper(),
-        timestamp timestamp
-    }
-    query_string = &.join(f{k}={params_dict[k]} for k in sorted(params_dict))
-    params_dict[signature] = generate_signature(secret_key, query_string)
-    url = f{BASE_URL}{ORDER_ENDPOINT}
-    headers = {X-BX-APIKEY api_key, Content-Type applicationjson}
-    resp = requests.post(url, headers=headers, json=params_dict)
-    try
-        return resp.json()
-    except Exception
-        return {code -1, msg Ungültige API-Antwort, raw resp.text}
-
-def SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, quantity, stop_price, position_side=SHORT):
-    
-    SL für SHORT BUY STOP_MARKET (über Entry) zum Schließen
-    
-    timestamp = int(time.time()  1000)
-    params_dict = {
-        symbol symbol,
-        side BUY,  # Short schließen = buy
-        type STOP_MARKET,
-        quantity round(quantity, 6),
-        stopPrice round(stop_price, 6),
-        positionSide position_side.upper(),
-        timestamp timestamp
-    }
-    query_string = &.join(f{k}={params_dict[k]} for k in sorted(params_dict))
-    params_dict[signature] = generate_signature(secret_key, query_string)
-    url = f{BASE_URL}{ORDER_ENDPOINT}
-    headers = {X-BX-APIKEY api_key, Content-Type applicationjson}
-    resp = requests.post(url, headers=headers, json=params_dict)
-    try
-        return resp.json()
-    except Exception
-        return {code -1, msg Ungültige API-Antwort, raw resp.text}
-
-def SHORT_get_open_orders(api_key, secret_key, symbol):
-    timestamp = int(time.time()  1000)
-    params = fsymbol={symbol}&timestamp={timestamp}
-    signature = generate_signature(secret_key, params)
-    url = f{BASE_URL}{OPEN_ORDERS_ENDPOINT}{params}&signature={signature}
-    headers = {X-BX-APIKEY api_key}
-    r = requests.get(url, headers=headers)
-    try
-        return r.json()
-    except Exception
-        return {code -1, msg Ungültige Antwort Open Orders, raw r.text}
-
-def SHORT_cancel_order(api_key, secret_key, symbol, order_id):
-    timestamp = int(time.time()  1000)
-    params = fsymbol={symbol}&orderId={order_id}&timestamp={timestamp}
-    signature = generate_signature(secret_key, params)
-    url = f{BASE_URL}{ORDER_ENDPOINT}{params}&signature={signature}
-    headers = {X-BX-APIKEY api_key}
-    r = requests.delete(url, headers=headers)
-    try
-        return r.json()
-    except Exception
-        return {code -1, msg Ungültige Antwort Cancel, raw r.text}
 
 # === Positionsabfrage ===
 def SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=None):
     endpoint = openApiswapv2userpositions
-    params = {symbol symbol}
-    response = send_signed_request(GET, endpoint, api_key, secret_key, params)
-    positions = response.get(data, []) if isinstance(response.get(data, []), list) else []
+    params = {"symbol": symbol}
+    response = SHORT_send_signed_request("GET", endpoint, api_key, secret_key, params)
+    positions = response.get("data", []) if isinstance(response.get("data", []), list) else []
     raw_positions = positions
     position_size = 0.0
     liquidation_price = None
-    if logs is not None
-        logs.append(fPositions Rohdaten {raw_positions})
-    if response.get(code) == 0
-        for pos in positions
-            if pos.get(symbol) == symbol and pos.get(positionSide, ).upper() == position_side.upper()
-                try
-                    position_size = float(pos.get(size, 0)) or float(pos.get(positionAmt, 0))
-                    liquidation_price = float(pos.get(liquidationPrice, 0)) if pos.get(liquidationPrice) else None
-                    if logs is not None
-                        logs.append(fGefundene Position size={position_size}, liqPrice={liquidation_price})
-                except (ValueError, TypeError) as e
-                    if logs is not None
-                        logs.append(fFehler beim Parsen der Position {e})
+
+    if logs is not None:
+        logs.append(f"Positions Rohdaten: {raw_positions}")
+
+    if response.get("code") == 0:
+        for pos in positions:
+            if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
+                try:
+                    position_size = float(pos.get("size", 0)) or float(pos.get("positionAmt", 0))
+                    liquidation_price = float(pos.get("liquidationPrice", 0)) if pos.get("liquidationPrice") else None
+                    if logs is not None:
+                        logs.append(f"Gefundene Position size={position_size}, liqPrice={liquidation_price}")
+                except (ValueError, TypeError) as e:
+                    if logs is not None:
+                        logs.append(f"Fehler beim Parsen der Position: {e}")
                     position_size = 0.0
                 break
-    else
-        if logs is not None
-            logs.append(fAPI Positions Fehlercode {response.get('code')})
+    else:
+        if logs is not None:
+            logs.append(f"API Positions Fehlercode {response.get('code')}")
+
     return position_size, raw_positions, liquidation_price
 
-# === Schließen aller Positionen (nur SHORT relevant) ===
+
+# === Schließen aller Positionen (nur SHORT) ===
 def SHORT_close_all_positions(api_key, secret_key):
     logs = []
     closed_positions = []
-    positions_resp = get_open_positions_for_all_symbols(api_key, secret_key)
-    if positions_resp.get(error)
-        sende_telegram_nachricht(BingX Bot, fFehler beim Abrufen der Positionen {positions_resp.get('msg')})
-        logs.append(Fehler beim Abrufen der Positionen)
-        return {error True, msg Konnte offene Positionen nicht abrufen, logs logs}
-    positions = positions_resp.get(data, [])
-    if not positions
-        logs.append(Keine offenen Positionen)
-        return {error False, msg Keine offenen Positionen, closed [], logs logs}
-    for pos in positions
-        symbol = pos.get(symbol)
-        position_side = pos.get(positionSide, ).upper()
-        qty = float(pos.get(positionAmt, 0) or pos.get(size, 0) or 0)
-        if position_side != SHORT
-            continue  # nur SHORTs schließen
-        if qty == 0
+    positions_resp = SHORT_get_open_positions_for_all_symbols(api_key, secret_key)
+
+    if positions_resp.get("error"):
+        sende_telegram_nachricht("BingX Bot", f"Fehler beim Abrufen der Positionen: {positions_resp.get('msg')}")
+        logs.append("Fehler beim Abrufen der Positionen")
+        return {"error": True, "msg": "Konnte offene Positionen nicht abrufen", "logs": logs}
+
+    positions = positions_resp.get("data", [])
+    if not positions:
+        logs.append("Keine offenen Positionen")
+        return {"error": False, "msg": "Keine offenen Positionen", "closed": [], "logs": logs}
+
+    for pos in positions:
+        symbol = pos.get("symbol")
+        position_side = pos.get("positionSide", "").upper()
+        qty = float(pos.get("positionAmt", 0) or pos.get("size", 0) or 0)
+
+        if position_side != "SHORT" or qty == 0:
             continue
-        try
-            resp = place_market_order_close(api_key, secret_key, symbol, qty, position_side)
-            logs.append(fClosed {symbol} {position_side} ({qty}) -> {resp})
+
+        try:
+            resp = SHORT_place_market_order_close(api_key, secret_key, symbol, qty, position_side)
+            logs.append(f"Closed {symbol} {position_side} ({qty}) -> {resp}")
             closed_positions.append({
-                symbol symbol,
-                side position_side,
-                quantity qty,
-                response resp
+                "symbol": symbol,
+                "side": position_side,
+                "quantity": qty,
+                "response": resp
             })
-        except Exception as e
-            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side} {e}
-            sende_telegram_nachricht(BingX Bot, message)
+        except Exception as e:
+            message = f"⚠️ Fehler beim Schließen von {symbol} {position_side}: {e}"
+            sende_telegram_nachricht("BingX Bot", message)
             logs.append(message)
-    return {error False, closed closed_positions, logs logs}
-            
+
+    return {"error": False, "closed": closed_positions, "logs": logs}
+
 
 def SHORT_get_open_positions_for_all_symbols(api_key, secret_key):
     endpoint = openApiswapv2userpositions
-    response = send_signed_request(GET, endpoint, api_key, secret_key, {})
-    if response.get(code) != 0
-        return {error True, msg response.get(msg, Fehler beim Abrufen der Positionen), data []}
-    positions = response.get(data, []) or []
-    return {error False, data positions}
+    response = SHORT_send_signed_request("GET", endpoint, api_key, secret_key, {})
+    if response.get("code") != 0:
+        return {"error": True, "msg": response.get("msg", "Fehler beim Abrufen der Positionen"), "data": []}
+    positions = response.get("data", []) or []
+    return {"error": False, "data": positions}
 
-# === Close helper für webhook 'close' action ===
-def SHORT_close_open_position(api_key, secret_key, symbol, position_side=SHORT):
+
+# === CLOSE Helper für Webhook 'close' ===
+def SHORT_close_open_position(api_key, secret_key, symbol, position_side="SHORT"):
     logs = []
-    position_size, _, liquidation_price = get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
-    if position_size == 0
-        logs.append(fKeine offene Position für {symbol} ({position_side}) gefunden.)
-        return {code 1, msg Keine offene Position, logs logs}
-    side = BUY  # Short schließen
-    timestamp = int(time.time()  1000)
+    position_size, _, liquidation_price = SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=logs)
+
+    if position_size == 0:
+        logs.append(f"Keine offene Position für {symbol} ({position_side}) gefunden.")
+        return {"code": 1, "msg": "Keine offene Position", "logs": logs}
+
+    side = "BUY"  # Short schließen
+    timestamp = int(time.time() * 1000)
     params_dict = {
-        symbol symbol,
-        side side,
-        type MARKET,
-        quantity round(position_size, 6),
-        positionSide position_side.upper(),
-        timestamp timestamp
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "quantity": round(position_size, 6),
+        "positionSide": position_side.upper(),
+        "timestamp": timestamp
     }
-    query_string = &.join(f{k}={params_dict[k]} for k in sorted(params_dict))
-    params_dict[signature] = generate_signature(secret_key, query_string)
-    url = f{BASE_URL}{ORDER_ENDPOINT}
-    headers = {X-BX-APIKEY api_key, Content-Type applicationjson}
+
+    query_string = "&".join(f"{k}={params_dict[k]}" for k in sorted(params_dict))
+    params_dict["signature"] = SHORT_generate_signature(secret_key, query_string)
+    url = f"{BASE_URL}{ORDER_ENDPOINT}"
+    headers = {"X-BX-APIKEY": api_key, "Content-Type": "application/json"}
+
     resp = requests.post(url, headers=headers, json=params_dict)
-    try
+    try:
         result = resp.json()
-    except Exception as e
-        result = {code -1, msg fFehler beim Parsen der API-Antwort {e}, raw_response resp.text}
-    logs.append(fSchließen der Position {result})
-    return {result result, logs logs}
+    except Exception as e:
+        result = {"code": -1, "msg": f"Fehler beim Parsen der API-Antwort: {e}", "raw_response": resp.text}
+
+    logs.append(f"Schließen der Position: {result}")
+    return {"result": result, "logs": logs}
 
 
 @app.route('/webhook', methods=['POST'])
