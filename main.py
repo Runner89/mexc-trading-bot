@@ -1651,7 +1651,7 @@ def webhook():
 
 
         
-if __name__ == __main__
+if __name__ == __main__:
     # Achtung debug=True in Produktion ausschalten
     app.run(debug=True, host=0.0.0.0, port=5000)
 
