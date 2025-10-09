@@ -469,7 +469,7 @@ def set_leverage(api_key, secret_key, symbol, leverage, position_side="LONG"):
 
 ### SHORT Funktionen
 # === Hilfsfunktionen ===
-def SHORT_generate_signature(secret_key str, params str) -> str:
+def SHORT_generate_signature(secret_key: str, params: str) -> str:
     return hmac.new(secret_key.encode('utf-8'), params.encode('utf-8'), hashlib.sha256).hexdigest()
 
 def SHORT_send_signed_request(http_method, endpoint, api_key, secret_key, params=None)
