@@ -560,7 +560,8 @@ def SHORT_place_market_order_close(api_key, secret_key, symbol, position_amt, po
 
 # === Positionsabfrage ===
 def SHORT_get_current_position(api_key, secret_key, symbol, position_side, logs=None):
-    endpoint = openApiswapv2userpositions
+    endpoint = "/openApi/swap/v2/user/positions"
+
     params = {"symbol": symbol}
     response = SHORT_send_signed_request("GET", endpoint, api_key, secret_key, params)
     positions = response.get("data", []) if isinstance(response.get("data", []), list) else []
@@ -633,7 +634,7 @@ def SHORT_close_all_positions(api_key, secret_key):
 
 
 def SHORT_get_open_positions_for_all_symbols(api_key, secret_key):
-    endpoint = openApiswapv2userpositions
+    endpoint = "/openApi/swap/v2/user/positions"
     response = SHORT_send_signed_request("GET", endpoint, api_key, secret_key, {})
     if response.get("code") != 0:
         return {"error": True, "msg": response.get("msg", "Fehler beim Abrufen der Positionen"), "data": []}
