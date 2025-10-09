@@ -683,12 +683,14 @@ def webhook():
     global alarm_countera
     global base_order_times
 
+    data = request.json
+    logs = []
+
     position_side = data.get("RENDER", {}).get("position_side") or data.get("RENDER", {}).get("positionSide") or "LONG"    #data.get("position_side") or data.get("positionSide") or "LONG"
 
     if position_side == "LONG":  
 
-        data = request.json
-        logs = []
+     
     
         botname = data.get("RENDER", {}).get("botname")    #data.get("botname")
         if not botname:
