@@ -1333,7 +1333,7 @@ def webhook():
             logs.append(f"position_size bei increase: {position_size}")
             if position_size is None:
                 SHORT_sende_telegram_nachricht(botname, f"Keine Verbindung zu BingX für Bot {botname} - increase aborted")
-                return jsonify({"error": True, "msg": "Keine Verbindung zu BingX – increase aborted", "logs": logs}), 500
+                return jsonify({"error": True, "msg": "Keine Verbindung zu BingX - increase aborted", "logs": logs}), 500
             if position_size > 0:
                 open_sell_orders_exist = True
             else:
