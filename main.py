@@ -685,7 +685,7 @@ def webhook():
 
     position_side = data.get("RENDER", {}).get("position_side") or data.get("RENDER", {}).get("positionSide") or "LONG"    #data.get("position_side") or data.get("positionSide") or "LONG"
 
-    if position_side = "LONG":  
+    if position_side == "LONG":  
 
         data = request.json
         logs = []
