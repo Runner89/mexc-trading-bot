@@ -609,15 +609,16 @@ def run_long(app):
                 
                 if position_size > 0:
                     open_sell_orders_exist = True
-                else: # erste Order, wird ausgeführt wenn auf Bingx die Position bereits geschlossen wurde, aber in Traidingview noch nicht -> increase-Befehl startet keien neue Position
-                       # Position bereits geschlossen -> nichts tun bei increase
-            		logs.append("Keine offene Position – increase-Signal wird ignoriert")
-            		return jsonify({
-                		"status": "increase_ignored_no_open_position",
-                		"botname": botname,
-                		"reason": "no_open_position",
-                		"logs": logs
-            			})
+                else:  # erste Order, wird ausgeführt wenn auf Bingx die Position bereits geschlossen wurde, aber in Traidingview noch nicht -> increase-Befehl startet keine neue Position
+                    # Position bereits geschlossen -> nichts tun bei increase
+                    logs.append("Keine offene Position – increase-Signal wird ignoriert")
+                    return jsonify({
+                        "status": "increase_ignored_no_open_position",
+                        "botname": botname,
+                        "reason": "no_open_position",
+                        "logs": logs
+                    })
+
         
             else:  # erste Order
                 open_sell_orders_exist = False
