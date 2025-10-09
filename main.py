@@ -1487,7 +1487,7 @@ def webhook():
         # 0. Guthaben abfragen
         available_usdt = 0.0
         try:
-                balance_response = SHORT_get_futures_balance(api_key, secret_key)
+            balance_response = SHORT_get_futures_balance(api_key, secret_key)
             logs.append(f"Balance Response: {balance_response}")
             if balance_response.get("code") == 0:
                 available_margin = float(balance_response.get("data", {}).get("balance", {}).get("availableMargin", 0))
