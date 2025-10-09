@@ -881,6 +881,10 @@ def webhook():
 
     if position_side == "LONG":  
 
+        data = request.json or {}
+        logs = []
+    
+
      
     
         botname = data.get("RENDER", {}).get("botname")    #data.get("botname")
@@ -1409,6 +1413,7 @@ def webhook():
 
     if position_side == "SHORT":
         data = request.json or {}
+        
         logs = []
     
         # Pflicht: botname
