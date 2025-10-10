@@ -1023,8 +1023,8 @@ def webhook():
                 
                 if position_size > 0:
                     open_sell_orders_exist = True
-                else: # erste Order, wird ausgeführt wenn auf Bingx die Position bereits geschlossen wurde, aber in Traidingview noch nicht -> increase-Befehl startet neue Position
-                    if beenden.lower() == "ja":
+                else: # erste Order, wird ausgeführt wenn auf Bingx die Position bereits geschlossen wurde, aber in Traidingview noch nicht -> increase-Befehl startet keine neue Position
+                    if beenden.lower() == "ja" or position_size == 0:
                         logs.append(f"⚠️ Bot {botname}: Beenden=ja → KEINE neue Base Order wird eröffnet")
                         # Nur Status zurückgeben, keine Base Order setzen
                         return jsonify({
@@ -1537,7 +1537,7 @@ def webhook():
                 open_sell_orders_exist = True
             else:
                 # Position bereits geschlossen -> treat as new BO if beenden != "ja"
-                if beenden.lower() == "ja":
+                if beenden.lower() == "ja" or position_size == 0:
                     logs.append("Beenden=ja → Keine neue Base Order")
                     return jsonify({"status": "no_base_order_opened", "botname": botname, "reason": "beenden=ja", "logs": logs})
                 else:
