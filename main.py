@@ -1450,6 +1450,7 @@ def webhook():
         after_so = data.get("RENDER", {}).get("after_so", 14)
         sell_percentage2 = data.get("RENDER", {}).get("sell_percentage2")
         beenden = data.get("RENDER", {}).get("beenden", "nein")
+        sl = data.get("RENDER", {}).get("sl")
     
         if not api_key or not secret_key:
             return jsonify({"error": True, "msg": "api_key und secret_key sind erforderlich"}), 400
