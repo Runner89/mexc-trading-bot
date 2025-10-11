@@ -1350,14 +1350,14 @@ def webhook():
                 sende_telegram_nachricht(botname, f"❌ Fehler bei Limit-Order für Bot: {botname}")
         
             # 11. Bestehende STOP_MARKET SL-Orders löschen
-            try:
-                for order in open_orders.get("data", {}).get("orders", []):
-                    if order.get("type") == "STOP_MARKET" and order.get("positionSide") == position_side:
-                        cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-                        logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
-            except Exception as e:
-                logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
-                sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen des Stop Loss für Bot: {botname}")
+            #try:
+            #    for order in open_orders.get("data", {}).get("orders", []):
+            #        if order.get("type") == "STOP_MARKET" and order.get("positionSide") == position_side:
+            #            cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+            #            logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
+            #except Exception as e:
+            #    logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
+            #    sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen des Stop Loss für Bot: {botname}")
         
             # 12. Stop-Loss Order setzen
             stop_loss_response = None
@@ -1705,18 +1705,18 @@ def webhook():
                 except Exception as e:
                     logs.append(f"[Fehler] avgPrice-Fallback fehlgeschlagen: {e}")
                     SHORT_sende_telegram_nachricht(botname, f"❌ Fallback avgPrice fehlgeschlagen für Bot: {botname}")
-    
-        # 9. Alte TP (BUY LIMIT) Orders löschen (nur BUY LIMIT / STOP_MARKET für positionSide SHORT)
+            
+        # Alte TP (BUY LIMIT) Orders löschen (nur Limit-Buy, Stoploss bleibt)
         try:
             if isinstance(open_orders, dict) and open_orders.get("code") == 0:
                 for order in open_orders.get("data", {}).get("orders", []):
-                    # Stop Market oder BUY LIMIT für SHORT löschen (um neu zu setzen)
-                    if order.get("positionSide") == "SHORT" and (order.get("type") == "STOP_MARKET" or (order.get("type") == "LIMIT" and order.get("side") == "BUY")):
+                    # Nur BUY LIMIT für SHORT löschen, STOP_MARKET bleibt erhalten
+                    if order.get("positionSide") == "SHORT" and order.get("type") == "LIMIT" and order.get("side") == "BUY":
                         cancel_resp = SHORT_cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-                        logs.append(f"Gelöschte Order {order.get('orderId')}: {cancel_resp}")
+                        logs.append(f"Gelöschte Limit-Buy-Order {order.get('orderId')}: {cancel_resp}")
         except Exception as e:
-            logs.append(f"Fehler beim Löschen alter Orders: {e}")
-            SHORT_sende_telegram_nachricht(botname, f"Fehler beim Löschen alter Orders {botname}: {e}")
+            logs.append(f"Fehler beim Löschen alter Limit-Buy-Orders: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen alter Limit-Buy-Orders {botname}: {e}")
     
         # Base Order Zeit speichern, falls neue BO
         if not open_sell_orders_exist:
