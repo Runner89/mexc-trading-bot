@@ -1819,7 +1819,7 @@ def webhook():
     
         # Wenn TP oder SL nicht gesetzt wurden -> Position schließen & Telegram
         tp_ok = (limit_order_response and limit_order_response.get("code") == 0) or (limit_order_response is None and limit_price == 0)
-        sl_ok = (sl_order_resp and sl_order_resp.get("code") == 0) or (stop_loss_price is None)
+        sl_ok = (sl_order_resp and sl_order_resp.get("code") == 0) or open_sell_orders_exist
         # Defensive check: wenn neither properly set and we have a position -> close & notify
         if sell_quantity > 0 and (not tp_ok or not sl_ok):
             SHORT_sende_telegram_nachricht(botname, f"⚠️ TP oder SL konnte(n) nicht gesetzt werden. Symbol: {symbol}")
