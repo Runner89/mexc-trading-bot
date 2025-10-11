@@ -1505,6 +1505,7 @@ def webhook():
                 logs.append("Fehler beim Abrufen der Balance.")
         except Exception as e:
             logs.append(f"Fehler bei Balance-Abfrage: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌❌❌ Keine Verbindung zu BingX bei Balance-Abfrage für Bot: {botname}")            
             available_usdt = None
     
         # 1. Hebel setzen (SHORT)
@@ -1820,12 +1821,12 @@ def webhook():
         sl_ok = (sl_order_resp and sl_order_resp.get("code") == 0) or (stop_loss_price is None)
         # Defensive check: wenn neither properly set and we have a position -> close & notify
         if sell_quantity > 0 and (not tp_ok or not sl_ok):
-            SHORT_sende_telegram_nachricht(botname, f"⚠️ TP oder SL konnte(n) nicht gesetzt werden. Schließe Position sofort! Symbol: {symbol}")
-            close_resp = SHORT_close_all_positions(api_key, secret_key)
-            logs.append(f"Positionen geschlossen weil TP/SL nicht gesetzt: {close_resp}")
+            SHORT_sende_telegram_nachricht(botname, f"⚠️ TP oder SL konnte(n) nicht gesetzt werden. Symbol: {symbol}")
+            #close_resp = SHORT_close_all_positions(api_key, secret_key)
+            #logs.append(f"Positionen geschlossen weil TP/SL nicht gesetzt: {close_resp}")
             return jsonify({
                 "error": True,
-                "msg": "TP/SL konnte nicht gesetzt werden. Position wurde geschlossen.",
+                "msg": "TP/SL konnte nicht gesetzt werden.",
                 "logs": logs
             }), 500
     
