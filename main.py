@@ -1,6 +1,6 @@
 #nicht vyn
 
-#Es wird zu Beginn geprüft, ob eine offene Long Position besteht. Falls ja, wird nichts gemacht.
+#Es wird zu Beginn geprüft, ob eine offene Long/Short Position besteht. 
 #Market Order mit Hebel wird gesetzt
 #Hebel muss in BINGX selber vorher eingestellt werden
 #Preis, welcher im JSON übergeben wurde, wird in Firebase gespeichert
@@ -9,8 +9,8 @@
 #Verfügbares Guthaben wird ermittelt
 #Ordergrösse für BO = (Verfügbares Guthaben - Sicherheit) * bo_factor; SO wird dann automatisch mal Faktor gerechet
 #Ordergrösse wird in Variable gespeichert, Firebase wird nur als Backup verwendet
-#StopLoss 3% über Liquidationspreis
-#Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.3% für die Berechnung der Sell-Limit-Order verwendet.
+#StopLoss sl muss angegeben werden
+#Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.2% bzw. +0.2% für die Berechnung der Sell-Limit-Order verwendet.
 #Falls Status Fehler werden für den Alarm nicht die Anzahl Kaufpreise gezählt, sondern von der Variablen alarm_counter
 #Wenn action=close ist, wird Position geschlossen
 #Wenn action nicht gefunden wird, ist es die Baseorder
@@ -1697,7 +1697,7 @@ def webhook():
                         if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
                             avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
                             if avg_price > 0:
-                                durchschnittspreis = round(avg_price * (1 - 0.002), 6)
+                                durchschnittspreis = round(avg_price * (1 + 0.002), 6)
                                 logs.append(f"Fallback avgPrice verwendet: {durchschnittspreis}")
                                 SHORT_sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                                 status_fuer_alle[botname] = "Fehler"
