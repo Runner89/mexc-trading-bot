@@ -1185,7 +1185,7 @@ def webhook():
                         if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == position_side.upper():
                             avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
                             if avg_price > 0:
-                                durchschnittspreis = round(avg_price * (1 - 0.003), 6)
+                                durchschnittspreis = round(avg_price * (1 - 0.002), 6)
                                 logs.append(f"[Fallback] avgPrice von BingX verwendet: {durchschnittspreis}")
                                 sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                             break
@@ -1670,7 +1670,7 @@ def webhook():
                     if pos.get("symbol") == symbol and pos.get("positionSide", "").upper() == "SHORT":
                         avg_price = float(pos.get("avgPrice", 0)) or float(pos.get("averagePrice", 0))
                         if avg_price > 0:
-                            durchschnittspreis = round(avg_price * (1 - 0.003), 6)
+                            durchschnittspreis = round(avg_price * (1 - 0.002), 6)
                             logs.append(f"[Fallback] Durchschnittspreis (BingX, adjust): {durchschnittspreis}")
                             SHORT_sende_telegram_nachricht(botname, f"ℹ️ Durchschnittspreis von BINGX verwendet für Bot: {botname}")
                             break
