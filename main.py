@@ -1147,7 +1147,7 @@ def webhook():
                         logs.append(f"[Market Order] Ausgeführte Menge aus order_response genutzt: {sell_quantity}")
         
                 if liquidation_price:
-                    stop_loss_price = round(price_from_webhook * (1 - sl / 100), 6)
+                    stop_loss_price = round(liquidation_price * (1 + sl / 100), 6)
                     logs.append(f"Stop-Loss-Preis basierend auf Liquidationspreis {liquidation_price}: {stop_loss_price}")
                 else:
                     stop_loss_price = None
