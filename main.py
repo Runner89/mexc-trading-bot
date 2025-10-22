@@ -1350,18 +1350,17 @@ def webhook():
                 sende_telegram_nachricht(botname, f"❌ Fehler bei Limit-Order für Bot: {botname}")
         
             # 11. Bestehende STOP_MARKET SL-Orders löschen
-            #try:
-            #    for order in open_orders.get("data", {}).get("orders", []):
-            #        if order.get("type") == "STOP_MARKET" and order.get("positionSide") == position_side:
-            #            cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
-            #            logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
-            #except Exception as e:
-            #    logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
-            #    sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen des Stop Loss für Bot: {botname}")
+            try:
+                for order in open_orders.get("data", {}).get("orders", []):
+                    if order.get("type") == "STOP_MARKET" and order.get("positionSide") == position_side:
+                        cancel_response = cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                        logs.append(f"Bestehende SL-Order gelöscht: {cancel_response}")
+            except Exception as e:
+                logs.append(f"Fehler beim Löschen alter Stop-Market-Orders: {e}")
+                sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen des Stop Loss für Bot: {botname}")
         
             # 12. Stop-Loss Order setzen
             stop_loss_response = None
-            if not open_sell_orders_exist:
                 try:
                     if sell_quantity > 0 and stop_loss_price:
                         stop_loss_response = place_stop_loss_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, position_side)
@@ -1798,24 +1797,26 @@ def webhook():
         except Exception as e:
             logs.append(f"Fehler bei TP Limit-Order: {e}")
             SHORT_sende_telegram_nachricht(botname, f"❌ Fehler bei TP Limit-Order für Bot: {botname}")
+
+
+        
     
         # Stop Loss: BUY STOP_MARKET über entry
         sl_order_resp = None
 
-        if not open_sell_orders_exist:
-            try:
-                if sell_quantity > 0 and stop_loss_price:
-                    sl_order_resp = SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "SHORT")
-                    logs.append(f"SL Stop-Market(BUY) Order gesetzt @ {stop_loss_price}: {sl_order_resp}")
-                    if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") not in (None, "NEW",):
-                        logs.append("SL Stop-Market konnte nicht gesetzt werden.")
-                        SHORT_sende_telegram_nachricht(botname, f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}")
-                else:
-                    logs.append("Keine SL gesetzt – fehlende Parameter (sell_quantity oder stop_loss_price).")
-                    SHORT_sende_telegram_nachricht(botname, f"⚠️ Keine SL gesetzt (fehlende Daten) für Bot: {botname}")
-            except Exception as e:
-                logs.append(f"Fehler beim Setzen der SL-Order: {e}")
-                SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen der SL für Bot: {botname}: {e}")
+        try:
+            if sell_quantity > 0 and stop_loss_price:
+                sl_order_resp = SHORT_place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "SHORT")
+                logs.append(f"SL Stop-Market(BUY) Order gesetzt @ {stop_loss_price}: {sl_order_resp}")
+                if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") not in (None, "NEW",):
+                    logs.append("SL Stop-Market konnte nicht gesetzt werden.")
+                    SHORT_sende_telegram_nachricht(botname, f"⚠️ SL Stop-Market-Order konnte nicht gesetzt werden!\nSymbol: {symbol}\nResponse: {sl_order_resp}")
+            else:
+                logs.append("Keine SL gesetzt – fehlende Parameter (sell_quantity oder stop_loss_price).")
+                SHORT_sende_telegram_nachricht(botname, f"⚠️ Keine SL gesetzt (fehlende Daten) für Bot: {botname}")
+        except Exception as e:
+            logs.append(f"Fehler beim Setzen der SL-Order: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen der SL für Bot: {botname}: {e}")
     
         # Wenn TP oder SL nicht gesetzt wurden -> Position schließen & Telegram
         tp_ok = (limit_order_response and limit_order_response.get("code") == 0) or (limit_order_response is None and limit_price == 0)
