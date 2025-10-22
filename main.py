@@ -1717,6 +1717,18 @@ def webhook():
         except Exception as e:
             logs.append(f"Fehler beim Löschen alter Limit-Buy-Orders: {e}")
             SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen alter Limit-Buy-Orders {botname}: {e}")
+
+        # Alte SL (BUY STOP_MARKET) Orders löschen – wichtig für sauberes Update
+        try:
+            if isinstance(open_orders, dict) and open_orders.get("code") == 0:
+                for order in open_orders.get("data", {}).get("orders", []):
+                    # Nur BUY STOP_MARKET (Stoploss) für SHORT löschen
+                    if order.get("positionSide") == "SHORT" and order.get("type") == "STOP_MARKET" and order.get("side") == "BUY":
+                        cancel_resp = SHORT_cancel_order(api_key, secret_key, symbol, str(order.get("orderId")))
+                        logs.append(f"Gelöschte SL Stop-Market-Order {order.get('orderId')}: {cancel_resp}")
+        except Exception as e:
+            logs.append(f"Fehler beim Löschen alter SL Orders: {e}")
+            SHORT_sende_telegram_nachricht(botname, f"❌ Fehler beim Löschen alter SL Orders {botname}: {e}")
     
         # Base Order Zeit speichern, falls neue BO
         if not open_sell_orders_exist:
