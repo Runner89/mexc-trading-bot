@@ -10,6 +10,7 @@
 #Ordergrösse für BO = (Verfügbares Guthaben - Sicherheit) * bo_factor; SO wird dann automatisch mal Faktor gerechet
 #Ordergrösse wird in Variable gespeichert, Firebase wird nur als Backup verwendet
 #StopLoss sl muss angegeben werden
+#StopLoss wird jedes mal neu gesetzt, es wird für die Berechnung Durchschnittspreis genommen
 #Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.2% bzw. +0.2% für die Berechnung der Sell-Limit-Order verwendet.
 #Falls Status Fehler werden für den Alarm nicht die Anzahl Kaufpreise gezählt, sondern von der Variablen alarm_counter
 #Wenn action=close ist, wird Position geschlossen
@@ -1361,15 +1362,15 @@ def webhook():
         
             # 12. Stop-Loss Order setzen
             stop_loss_response = None
-                try:
-                    if sell_quantity > 0 and stop_loss_price:
-                        stop_loss_response = place_stop_loss_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, position_side)
-                        logs.append(f"Stop-Loss Order gesetzt bei {stop_loss_price} für Bot {botname}: {stop_loss_response}")
-                    else:
-                        logs.append("Keine Stop-Loss Order gesetzt – unvollständige Daten.")
-                except Exception as e:
-                    logs.append(f"Fehler beim Setzen der Stop-Loss Order: {e}")
-                    sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen des Stop Loss für Bot: {botname}")
+            try:
+                if sell_quantity > 0 and stop_loss_price:
+                    stop_loss_response = place_stop_loss_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, position_side)
+                    logs.append(f"Stop-Loss Order gesetzt bei {stop_loss_price} für Bot {botname}: {stop_loss_response}")
+                else:
+                    logs.append("Keine Stop-Loss Order gesetzt – unvollständige Daten.")
+            except Exception as e:
+                logs.append(f"Fehler beim Setzen der Stop-Loss Order: {e}")
+                sende_telegram_nachricht(botname, f"❌ Fehler beim Setzen des Stop Loss für Bot: {botname}")
         
             alarm_trigger = int(data.get("RENDER", {}).get("alarm", 0))  #int(data.get("alarm", 0))
     
