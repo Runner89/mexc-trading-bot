@@ -1364,7 +1364,7 @@ def webhook():
             sl_order_resp = None
             try:
                 if sell_quantity > 0 and stop_loss_price:
-                    sl_order_resp = place_stoploss_buy_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "SHORT")
+                    sl_order_resp = place_stop_loss_order(api_key, secret_key, symbol, sell_quantity, stop_loss_price, "LONG")
                     logs.append(f"SL Stop-Market(BUY) Order gesetzt @ {stop_loss_price}: {sl_order_resp}")
                     if sl_order_resp.get("code") != 0 or sl_order_resp.get("data", {}).get("order", {}).get("status") not in (None, "NEW",):
                         logs.append("SL Stop-Market konnte nicht gesetzt werden.")
