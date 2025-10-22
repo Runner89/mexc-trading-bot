@@ -9,8 +9,8 @@
 #Verfügbares Guthaben wird ermittelt
 #Ordergrösse für BO = (Verfügbares Guthaben - Sicherheit) * bo_factor; SO wird dann automatisch mal Faktor gerechet
 #Ordergrösse wird in Variable gespeichert, Firebase wird nur als Backup verwendet
-#StopLoss sl muss angegeben werden
-#StopLoss wird jedes mal neu gesetzt, es wird für die Berechnung Durchschnittspreis genommen
+#StopLoss sl muss angegeben werden SL Distanz zum Liquidationspreis
+#StopLoss wird jedes mal neu gesetzt, es wird x Prozent vor dem Liquiationspreis gesetzt
 #Falls Firebaseverbindung fehlschlägt, wird der Durchschnittspreis aus Bingx -0.2% bzw. +0.2% für die Berechnung der Sell-Limit-Order verwendet.
 #Falls Status Fehler werden für den Alarm nicht die Anzahl Kaufpreise gezählt, sondern von der Variablen alarm_counter
 #Wenn action=close ist, wird Position geschlossen
