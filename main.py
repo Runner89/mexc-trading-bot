@@ -873,7 +873,7 @@ def SHORT_close_open_position(api_key, secret_key, symbol, position_side="SHORT"
 def webhook():
     global saved_usdt_amounts
     global status_fuer_alle
-    global alarm_countera
+    global alarm_counter
     global base_order_times
 
     data = request.json
@@ -1307,6 +1307,17 @@ def webhook():
                     
                 logs.append(f"Alarm2 {alarm_trigger - 4}")
                 logs.append(f"Alarm3 {anzahl_nachkäufe}") 
+
+
+                if anzahl_nachkäufe >= alarm_trigger:
+                    try:
+                        nachricht = f"{botname}:\nNachkäufe: {anzahl_nachkäufe}"
+                        telegram_result = sende_telegram_nachricht(botname, nachricht)
+                        logs.append(f"Telegram gesendet: {telegram_result}")
+                    except Exception as e:
+                        logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
+                        sende_telegram_nachricht(botname, f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
+
                 
                 # 3. Prüfen, ob 48 Stunden seit Base-Order vergangen sind oder Nachkauforder erreicht ist
                 if base_time is not None:
@@ -1762,6 +1773,18 @@ def webhook():
             else:
                 anzahl_käufe = len(kaufpreise or [])
                 anzahl_nachkäufe = max(anzahl_käufe - 1, 0)
+
+
+            if anzahl_nachkäufe >= alarm_trigger:
+                try:
+                    nachricht = f"{botname}:\nNachkäufe: {anzahl_nachkäufe}"
+                    telegram_result = SHORT_sende_telegram_nachricht(botname, nachricht)
+                    logs.append(f"Telegram gesendet: {telegram_result}")
+                except Exception as e:
+                    logs.append(f"Fehler beim Senden der Telegram-Nachricht: {e}")
+                    SHORT_sende_telegram_nachricht(botname, f"Fehler beim Senden der Telegram-Nachricht {botname}: {e}")
+
+            
             if base_time is not None:
                 delta = datetime.now(timezone.utc) - base_time
                 if delta.total_seconds() >= int(after_h) * 3600 or anzahl_nachkäufe >= int(after_so):
